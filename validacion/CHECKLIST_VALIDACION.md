@@ -261,8 +261,8 @@ Este documento proporciona una lista exhaustiva de verificación para validar qu
 ### 3.9 Espacios Públicos
 
 - [ ] **Áreas verdes suficientes**
-  - Mínimo: 9-16 m² área verde/habitante
-  - OMS recomienda: 9-16 m²/hab
+  - Mínimo recomendado por OMS: 9 m² área verde/habitante
+  - Óptimo: 15-16 m² área verde/habitante
   - Distribución equitativa en toda la zona
 
 - [ ] **Jerarquía de espacios**

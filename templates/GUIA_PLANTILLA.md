@@ -44,6 +44,8 @@ Ver [CAPAS_AUTOCAD.md](../docs/CAPAS_AUTOCAD.md) para detalles completos.
 
 ```lisp
 ; Copiar en Command Line o crear archivo .scr
+; Nota: En AutoCAD script, cada parámetro requiere especificar la capa de nuevo
+; Sintaxis: -LAYER NEW [nombre] COLOR [color] [nombre] LWEIGHT [peso] [nombre]
 
 -LAYER NEW VIALIDADES-PRINCIPALES COLOR 1 VIALIDADES-PRINCIPALES LWEIGHT 0.50 VIALIDADES-PRINCIPALES 
 -LAYER NEW VIALIDADES-SECUNDARIAS COLOR 2 VIALIDADES-SECUNDARIAS LWEIGHT 0.30 VIALIDADES-SECUNDARIAS

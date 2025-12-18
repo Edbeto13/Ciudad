@@ -638,6 +638,11 @@ Comando: MATERIALS
 
 **Problema:** EXTRUDE no funciona en objeto
 
+**Mensaje de error común:** 
+- "Objects must be closed" 
+- "Cannot extrude object"
+- "0 objects extruded"
+
 **Causa:** Polilínea no cerrada o geometría inválida
 
 **Solución:**
@@ -654,7 +659,11 @@ Comando: MATERIALS
 
 **Problema:** Objeto visible en 2D pero no en 3D
 
-**Causa:** Thickness = 0
+**Mensaje de error común:**
+- Sin error, pero objeto no visible en vista 3D
+- "No objects found" al usar 3DORBIT
+
+**Causa:** Thickness = 0 o sin propiedades 3D asignadas
 
 **Solución:**
 ```
@@ -665,6 +674,12 @@ Comando: PROPERTIES
 ### Archivo muy pesado
 
 **Problema:** Archivo 3D es muy grande para exportar
+
+**Síntomas:**
+- Archivo excede tamaño máximo de exportación
+- AutoCAD se vuelve lento
+- "Out of memory" error
+- Export falla o toma mucho tiempo
 
 **Solución:**
 ```
@@ -678,6 +693,12 @@ Comando: PROPERTIES
 ### Software destino no lee archivos
 
 **Problema:** FBX o DWG no se importa correctamente
+
+**Mensajes de error comunes:**
+- "Unable to open file"
+- "Invalid file format"
+- "Version not supported"
+- "Import failed" en software destino
 
 **Solución:**
 ```
