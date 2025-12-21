@@ -506,9 +506,9 @@
                 return div.innerHTML;
             }
 
-            const malicious = '<script>alert("xss")</script>';
+            const malicious = '<scr' + 'ipt>alert("xss")<\/scr' + 'ipt>';
             const sanitized = sanitizeText(malicious);
-            assert(!sanitized.includes('<script>'), 'Script tag no sanitizado');
+            assert(!sanitized.includes('<scr' + 'ipt>'), 'Script tag no sanitizado');
         });
 
         runTest('Seguridad - límite de tamaño de archivo', () => {
