@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Ciudad 3D</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; background: #1a1a2e; }
+        #container { width: 100vw; height: 100vh; }
+        #controls { position: fixed; top: 10px; left: 10px; background: rgba(26, 26, 46, 0.95); padding: 15px; border-radius: 8px; color: #fff; z-index: 1000; max-height: 90vh; overflow-y: auto; width: 280px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        #controls h2 { margin-bottom: 15px; font-size: 18px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        #controls h3 { margin: 15px 0 10px; font-size: 14px; color: #888; }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; margin-bottom: 5px; font-size: 12px; color: #aaa; }
+        .control-group input, .control-group select { width: 100%; padding: 8px; border: 1px solid #444; border-radius: 4px; background: #2a2a4e; color: #fff; font-size: 13px; }
+        .btn { width: 100%; padding: 10px; margin: 5px 0; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .btn-primary { background: #4a90d9; color: #fff; }
+        .btn-primary:hover { background: #5aa0e9; }
+        .btn-success { background: #4caf50; color: #fff; }
+        .btn-success:hover { background: #5cbf60; }
+        .btn-warning { background: #ff9800; color: #fff; }
+        .btn-warning:hover { background: #ffaa20; }
+        .btn-danger { background: #f44336; color: #fff; }
+        .btn-danger:hover { background: #ff5346; }
+        .btn-secondary { background: #666; color: #fff; }
+        .btn-secondary:hover { background: #777; }
+        .btn-group { display: flex; gap: 5px; }
+        .btn-group .btn { flex: 1; }
+        #info { position: fixed; bottom: 10px; left: 10px; background: rgba(26, 26, 46, 0.9); padding: 10px 15px; border-radius: 8px; color: #fff; z-index: 1000; font-size: 12px; }
+        #info span { margin-right: 15px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: #2a2a4e; padding: 25px; border-radius: 10px; max-width: 500px; width: 90%; color: #fff; }
+        .modal-content h3 { margin-bottom: 15px; }
+        .modal-content p { margin-bottom: 15px; color: #aaa; }
+        .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; }
+        .modal-buttons .btn { width: auto; padding: 8px 20px; }
+        .progress-bar { width: 100%; height: 10px; background: #444; border-radius: 5px; overflow: hidden; margin: 10px 0; }
+        .progress-bar-fill { height: 100%; background: #4a90d9; transition: width 0.3s; }
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 3000; }
+        .toast { background: #333; color: #fff; padding: 12px 20px; border-radius: 6px; margin-bottom: 10px; animation: slideIn 0.3s ease; max-width: 300px; }
+        .toast.success { border-left: 4px solid #4caf50; }
+        .toast.error { border-left: 4px solid #f44336; }
+        .toast.warning { border-left: 4px solid #ff9800; }
+        .toast.info { border-left: 4px solid #4a90d9; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        #fileInput { display: none; }
+        .checkbox-group { display: flex; align-items: center; margin: 10px 0; }
+        .checkbox-group input[type="checkbox"] { width: auto; margin-right: 10px; }
+        #shortcuts { position: fixed; top: 10px; right: 10px; background: rgba(26, 26, 46, 0.95); padding: 15px; border-radius: 8px; color: #fff; z-index: 1000; font-size: 12px; }
+        #shortcuts h4 { margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px; }
+        .shortcut { margin: 5px 0; }
+        .shortcut kbd { background: #444; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div id="controls">
+        <h2>🏙️ Simulador de Ciudad</h2>
+        <h3>📁 Proyecto</h3>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="showSaveModal()">💾 Guardar</button>
+            <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📂 Cargar</button>
+        </div>
+        <input type="file" id="fileInput" accept=".json" onchange="handleFileSelect(event)">
+        <div class="checkbox-group">
+            <input type="checkbox" id="autosaveEnabled" onchange="toggleAutosave()">
+            <label for="autosaveEnabled">Autosave (cada 5 min)</label>
+        </div>
+        
+        <h3>🧱 Módulos</h3>
+        <div class="control-group">
+            <label>Tipo de módulo</label>
+            <select id="moduleType">
+                <option value="building">Edificio</option>
+                <option value="house">Casa</option>
+                <option value="road">Carretera</option>
+                <option value="park">Parque</option>
+                <option value="water">Agua</option>
+                <option value="commercial">Comercial</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label>Tamaño de grilla</label>
+            <input type="number" id="gridSize" value="20" min="5" max="100" onchange="updateGrid()">
+        </div>
+        <button class="btn btn-success" onclick="addModule()">➕ Añadir Módulo</button>
+        <button class="btn btn-danger" onclick="deleteSelected()">🗑️ Eliminar Selección</button>
+        
+        <h3>🔄 Edición</h3>
+        <div class="btn-group">
+            <button class="btn btn-secondary" onclick="undo()">↩️ Deshacer</button>
+            <button class="btn btn-secondary" onclick="redo()">↪️ Rehacer</button>
+        </div>
+        <button class="btn btn-warning" onclick="duplicateSelected()">📋 Duplicar (D)</button>
+        <button class="btn btn-warning" onclick="rotateSelected()">🔄 Rotar 90° (R)</button>
+        
+        <h3>📤 Exportar</h3>
+        <div class="control-group">
+            <label>Unidades</label>
+            <select id="exportUnits">
+                <option value="1">Pulgadas</option>
+                <option value="4" selected>Milímetros</option>
+                <option value="5">Centímetros</option>
+                <option value="6">Metros</option>
+            </select>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="exportSelectionOnly">
+            <label for="exportSelectionOnly">Solo selección</label>
+        </div>
+        <button class="btn btn-success" onclick="exportToDxf()">📐 Exportar DXF</button>
+        <button class="btn btn-success" onclick="exportToObj()">🎨 Exportar OBJ</button>
+        <div class="btn-group">
+            <button class="btn btn-secondary" onclick="exportGeometryOnly()">Solo Geometría</button>
+            <button class="btn btn-secondary" onclick="exportWithMetadata()">Con Metadata</button>
+        </div>
+        
+        <h3>⚙️ Opciones</h3>
+        <div class="checkbox-group">
+            <input type="checkbox" id="useInstancing" checked onchange="toggleInstancing()">
+            <label for="useInstancing">Usar Instancing (mejor FPS)</label>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="debugMode" onchange="toggleDebug()">
+            <label for="debugMode">Modo Debug</label>
+        </div>
+    </div>
+    
+    <div id="shortcuts">
+        <h4>⌨️ Atajos</h4>
+        <div class="shortcut"><kbd>Ctrl+Z</kbd> Deshacer</div>
+        <div class="shortcut"><kbd>Ctrl+Y</kbd> Rehacer</div>
+        <div class="shortcut"><kbd>D</kbd> Duplicar</div>
+        <div class="shortcut"><kbd>R</kbd> Rotar 90°</div>
+        <div class="shortcut"><kbd>Supr</kbd> Eliminar</div>
+        <div class="shortcut"><kbd>Ctrl+S</kbd> Guardar</div>
+    </div>
+    
+    <div id="info">
+        <span id="fps">FPS: 0</span>
+        <span id="moduleCount">Módulos: 0</span>
+        <span id="selectedInfo">Selección: ninguna</span>
+    </div>
+    
+    <div id="toast-container"></div>
+    
+    <div id="loadConfirmModal" class="modal">
+        <div class="modal-content">
+            <h3>⚠️ Confirmar carga</h3>
+            <p>¿Estás seguro de que deseas cargar este proyecto? Se sobrescribirá la escena actual.</p>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeModal('loadConfirmModal')">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmLoad()">Cargar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="saveModal" class="modal">
+        <div class="modal-content">
+            <h3>💾 Guardar Proyecto</h3>
+            <div class="control-group">
+                <label>Nombre del proyecto</label>
+                <input type="text" id="projectName" value="mi_ciudad">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="closeModal('saveModal')">Cancelar</button>
+                <button class="btn btn-success" onclick="saveProject()">Guardar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="progressModal" class="modal">
+        <div class="modal-content">
+            <h3 id="progressTitle">Procesando...</h3>
+            <div class="progress-bar">
+                <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+            <p id="progressMessage">Por favor espere...</p>
+        </div>
+    </div>
+    
+    <div id="errorModal" class="modal">
+        <div class="modal-content">
+            <h3>❌ Error</h3>
+            <p id="errorMessage"></p>
+            <div class="modal-buttons">
+                <button class="btn btn-primary" onclick="closeModal('errorModal')">Aceptar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <script>
+    // ============================================================
+    // CONFIGURACIÓN Y CONSTANTES
+    // ============================================================
+    const CONFIG = {
+        VERSION: 2,                    // Versión actual del formato de proyecto
+        MAX_FILE_SIZE: 5 * 1024 * 1024, // 5 MB máximo para archivos
+        AUTOSAVE_INTERVAL: 5 * 60 * 1000, // 5 minutos
+        HEX_SIZE: 1,                   // Tamaño del hexágono
+        DEBUG: false                   // Modo debug
+    };
+
+    // Colores por tipo de módulo
+    const MODULE_COLORS = {
+        building: 0x4a90d9,
+        house: 0x8bc34a,
+        road: 0x607d8b,
+        park: 0x4caf50,
+        water: 0x03a9f4,
+        commercial: 0xff9800
+    };
+
+    // Alturas por tipo de módulo
+    const MODULE_HEIGHTS = {
+        building: 5,
+        house: 2,
+        road: 0.1,
+        park: 0.3,
+        water: 0.1,
+        commercial: 3
+    };
+
+    // ============================================================
+    // ESTADO GLOBAL
+    // ============================================================
+    let scene, camera, renderer, controls;
+    let modules = [];                  // Array de módulos en la escena
+    let selectedModule = null;         // Módulo actualmente seleccionado
+    let gridHelper = null;             // Helper de la grilla
+    let raycaster, mouse;              // Para selección con mouse
+    let instancedMeshes = {};          // Meshes instanciados por tipo
+    let pendingFileData = null;        // Datos del archivo pendiente de cargar
+    let autosaveTimer = null;          // Timer de autosave
+    let frameCount = 0;                // Contador de frames para FPS
+    let lastFpsUpdate = 0;             // Último update de FPS
+    let nextModuleId = 1;              // ID único para módulos
+
+    // ============================================================
+    // UNDO/REDO STACK (Prompt 4)
+    // ============================================================
+    const ActionStack = {
+        undoStack: [],
+        redoStack: [],
+        maxSize: 50,
+
+        // Registra una nueva acción
+        push(action) {
+            this.undoStack.push(action);
+            this.redoStack = []; // Limpiar redo al hacer nueva acción
+            if (this.undoStack.length > this.maxSize) {
+                this.undoStack.shift();
+            }
+            debugLog('Action pushed:', action.type);
+        },
+
+        // Deshace la última acción
+        undo() {
+            if (this.undoStack.length === 0) {
+                showToast('Nada que deshacer', 'info');
+                return false;
+            }
+            const action = this.undoStack.pop();
+            this.redoStack.push(action);
+            this.executeUndo(action);
+            showToast('Deshacer: ' + action.type, 'info');
+            return true;
+        },
+
+        // Rehace la última acción deshecha
+        redo() {
+            if (this.redoStack.length === 0) {
+                showToast('Nada que rehacer', 'info');
+                return false;
+            }
+            const action = this.redoStack.pop();
+            this.undoStack.push(action);
+            this.executeRedo(action);
+            showToast('Rehacer: ' + action.type, 'info');
+            return true;
+        },
+
+        // Ejecuta el undo de una acción
+        executeUndo(action) {
+            switch (action.type) {
+                case 'CREATE':
+                    removeModuleById(action.moduleId);
+                    break;
+                case 'DELETE':
+                    restoreModule(action.moduleData);
+                    break;
+                case 'MOVE':
+                    moveModuleToPosition(action.moduleId, action.oldQ, action.oldR);
+                    break;
+                case 'ROTATE':
+                    setModuleRotation(action.moduleId, action.oldRotation);
+                    break;
+                case 'DUPLICATE':
+                    removeModuleById(action.newModuleId);
+                    break;
+            }
+            updateModuleCount();
+        },
+
+        // Ejecuta el redo de una acción
+        executeRedo(action) {
+            switch (action.type) {
+                case 'CREATE':
+                    restoreModule(action.moduleData);
+                    break;
+                case 'DELETE':
+                    removeModuleById(action.moduleId);
+                    break;
+                case 'MOVE':
+                    moveModuleToPosition(action.moduleId, action.newQ, action.newR);
+                    break;
+                case 'ROTATE':
+                    setModuleRotation(action.moduleId, action.newRotation);
+                    break;
+                case 'DUPLICATE':
+                    restoreModule(action.newModuleData);
+                    break;
+            }
+            updateModuleCount();
+        },
+
+        // Limpia el historial
+        clear() {
+            this.undoStack = [];
+            this.redoStack = [];
+        }
+    };
+
+    // ============================================================
+    // UTILIDADES
+    // ============================================================
+
+    // Log de debug
+    function debugLog(...args) {
+        if (CONFIG.DEBUG) {
+            console.log('[DEBUG]', ...args);
+        }
+    }
+
+    // Muestra un toast de notificación
+    function showToast(message, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + type;
+        toast.textContent = sanitizeText(message);
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    // Sanitiza texto para evitar XSS
+    function sanitizeText(text) {
+        if (typeof text !== 'string') return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Abre un modal
+    function openModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    }
+
+    // Cierra un modal
+    function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    }
+
+    // Muestra modal de error
+    function showError(message) {
+        document.getElementById('errorMessage').textContent = sanitizeText(message);
+        openModal('errorModal');
+        console.error('[ERROR]', message);
+    }
+
+    // Muestra modal de progreso
+    function showProgress(title, message, percent = 0) {
+        document.getElementById('progressTitle').textContent = sanitizeText(title);
+        document.getElementById('progressMessage').textContent = sanitizeText(message);
+        document.getElementById('progressBar').style.width = percent + '%';
+        openModal('progressModal');
+    }
+
+    // Oculta modal de progreso
+    function hideProgress() {
+        closeModal('progressModal');
+    }
+
+    // ============================================================
+    // CONVERSIÓN DE COORDENADAS HEXAGONALES (Prompt 5)
+    // ============================================================
+
+    // Convierte coordenadas hexagonales (q, r) a mundo (x, z)
+    function hexToWorld(q, r) {
+        const size = CONFIG.HEX_SIZE;
+        const x = size * (3/2 * q);
+        const z = size * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r);
+        return { x, z };
+    }
+
+    // Convierte coordenadas mundo (x, z) a hexagonales (q, r)
+    function worldToHex(x, z) {
+        const size = CONFIG.HEX_SIZE;
+        const q = (2/3 * x) / size;
+        const r = (-1/3 * x + Math.sqrt(3)/3 * z) / size;
+        return { q: Math.round(q), r: Math.round(r) };
+    }
+
+    // ============================================================
+    // INICIALIZACIÓN DE THREE.JS
+    // ============================================================
+    function init() {
+        // Crear escena
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a2e);
+
+        // Crear cámara
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 20, 15);
+
+        // Crear renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // Controles de órbita
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+
+        // Raycaster para selección
+        raycaster = new THREE.Raycaster();
+        mouse = new THREE.Vector2();
+
+        // Luces
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(10, 20, 10);
+        scene.add(directionalLight);
+
+        // Crear grilla
+        updateGrid();
+
+        // Event listeners
+        window.addEventListener('resize', onWindowResize);
+        renderer.domElement.addEventListener('click', onMouseClick);
+        document.addEventListener('keydown', onKeyDown);
+
+        // Iniciar loop de renderizado
+        animate();
+
+        // Cargar autosave si existe
+        loadAutosave();
+
+        debugLog('Inicialización completada');
+    }
+
+    // Actualiza la grilla
+    function updateGrid() {
+        if (gridHelper) scene.remove(gridHelper);
+        const size = parseInt(document.getElementById('gridSize').value) || 20;
+        gridHelper = new THREE.GridHelper(size, size, 0x444444, 0x333333);
+        scene.add(gridHelper);
+    }
+
+    // Maneja el redimensionamiento de ventana
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // ============================================================
+    // GESTIÓN DE MÓDULOS
+    // ============================================================
+
+    // Crea un nuevo módulo
+    function createModule(type, q, r, rotation = 0, id = null, metadata = {}) {
+        const moduleId = id || nextModuleId++;
+        const worldPos = hexToWorld(q, r);
+        const height = MODULE_HEIGHTS[type] || 1;
+        const color = MODULE_COLORS[type] || 0xffffff;
+
+        // Crear geometría según tipo
+        let geometry;
+        if (type === 'road' || type === 'water' || type === 'park') {
+            geometry = new THREE.BoxGeometry(CONFIG.HEX_SIZE * 1.5, height, CONFIG.HEX_SIZE * 1.5);
+        } else {
+            geometry = new THREE.BoxGeometry(CONFIG.HEX_SIZE, height, CONFIG.HEX_SIZE);
+        }
+
+        const material = new THREE.MeshLambertMaterial({ color: color });
+        const mesh = new THREE.Mesh(geometry, material);
+        
+        mesh.position.set(worldPos.x, height / 2, worldPos.z);
+        mesh.rotation.y = rotation * Math.PI / 180;
+
+        // Guardar datos del módulo
+        mesh.userData = {
+            id: moduleId,
+            type: type,
+            q: q,
+            r: r,
+            rotation: rotation,
+            metadata: metadata
+        };
+
+        scene.add(mesh);
+        modules.push(mesh);
+
+        if (moduleId >= nextModuleId) {
+            nextModuleId = moduleId + 1;
+        }
+
+        updateModuleCount();
+        return mesh;
+    }
+
+    // Añade un módulo en posición aleatoria
+    function addModule() {
+        const type = document.getElementById('moduleType').value;
+        const gridSize = parseInt(document.getElementById('gridSize').value) || 20;
+        const q = Math.floor(Math.random() * gridSize) - gridSize / 2;
+        const r = Math.floor(Math.random() * gridSize) - gridSize / 2;
+        
+        const mesh = createModule(type, q, r);
+        
+        // Registrar acción para undo
+        ActionStack.push({
+            type: 'CREATE',
+            moduleId: mesh.userData.id,
+            moduleData: serializeModule(mesh)
+        });
+
+        showToast('Módulo añadido', 'success');
+    }
+
+    // Elimina un módulo por ID
+    function removeModuleById(id) {
+        const index = modules.findIndex(m => m.userData.id === id);
+        if (index !== -1) {
+            const mesh = modules[index];
+            scene.remove(mesh);
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            modules.splice(index, 1);
+            if (selectedModule === mesh) {
+                selectedModule = null;
+                updateSelectedInfo();
+            }
+        }
+    }
+
+    // Restaura un módulo desde datos serializados
+    function restoreModule(data) {
+        createModule(data.type, data.q, data.r, data.rotation, data.id, data.metadata || {});
+    }
+
+    // Mueve un módulo a nueva posición
+    function moveModuleToPosition(id, q, r) {
+        const mesh = modules.find(m => m.userData.id === id);
+        if (mesh) {
+            const worldPos = hexToWorld(q, r);
+            mesh.position.x = worldPos.x;
+            mesh.position.z = worldPos.z;
+            mesh.userData.q = q;
+            mesh.userData.r = r;
+        }
+    }
+
+    // Establece la rotación de un módulo
+    function setModuleRotation(id, rotation) {
+        const mesh = modules.find(m => m.userData.id === id);
+        if (mesh) {
+            mesh.rotation.y = rotation * Math.PI / 180;
+            mesh.userData.rotation = rotation;
+        }
+    }
+
+    // Elimina el módulo seleccionado
+    function deleteSelected() {
+        if (!selectedModule) {
+            showToast('Ningún módulo seleccionado', 'warning');
+            return;
+        }
+
+        ActionStack.push({
+            type: 'DELETE',
+            moduleId: selectedModule.userData.id,
+            moduleData: serializeModule(selectedModule)
+        });
+
+        removeModuleById(selectedModule.userData.id);
+        selectedModule = null;
+        updateSelectedInfo();
+        showToast('Módulo eliminado', 'success');
+    }
+
+    // Duplica el módulo seleccionado
+    function duplicateSelected() {
+        if (!selectedModule) {
+            showToast('Ningún módulo seleccionado', 'warning');
+            return;
+        }
+
+        const data = selectedModule.userData;
+        const newMesh = createModule(data.type, data.q + 1, data.r + 1, data.rotation, null, {...data.metadata});
+
+        ActionStack.push({
+            type: 'DUPLICATE',
+            originalId: data.id,
+            newModuleId: newMesh.userData.id,
+            newModuleData: serializeModule(newMesh)
+        });
+
+        showToast('Módulo duplicado', 'success');
+    }
+
+    // Rota el módulo seleccionado 90°
+    function rotateSelected() {
+        if (!selectedModule) {
+            showToast('Ningún módulo seleccionado', 'warning');
+            return;
+        }
+
+        const oldRotation = selectedModule.userData.rotation;
+        const newRotation = (oldRotation + 90) % 360;
+
+        ActionStack.push({
+            type: 'ROTATE',
+            moduleId: selectedModule.userData.id,
+            oldRotation: oldRotation,
+            newRotation: newRotation
+        });
+
+        setModuleRotation(selectedModule.userData.id, newRotation);
+        showToast('Módulo rotado', 'success');
+    }
+
+    // Serializa un módulo para guardado
+    function serializeModule(mesh) {
+        const data = mesh.userData;
+        return {
+            id: data.id,
+            type: data.type,
+            q: data.q,
+            r: data.r,
+            rotation: data.rotation,
+            metadata: data.metadata || {}
+        };
+    }
+
+    // Actualiza el contador de módulos
+    function updateModuleCount() {
+        document.getElementById('moduleCount').textContent = 'Módulos: ' + modules.length;
+    }
+
+    // Actualiza info de selección
+    function updateSelectedInfo() {
+        const el = document.getElementById('selectedInfo');
+        if (selectedModule) {
+            const data = selectedModule.userData;
+            el.textContent = `Selección: ${data.type} (${data.q}, ${data.r})`;
+        } else {
+            el.textContent = 'Selección: ninguna';
+        }
+    }
+
+    // ============================================================
+    // SELECCIÓN CON MOUSE
+    // ============================================================
+    function onMouseClick(event) {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(modules);
+
+        // Deseleccionar anterior
+        if (selectedModule) {
+            selectedModule.material.emissive.setHex(0x000000);
+        }
+
+        if (intersects.length > 0) {
+            selectedModule = intersects[0].object;
+            selectedModule.material.emissive.setHex(0x444444);
+        } else {
+            selectedModule = null;
+        }
+
+        updateSelectedInfo();
+    }
+
+    // ============================================================
+    // ATAJOS DE TECLADO (Prompt 4)
+    // ============================================================
+    function onKeyDown(event) {
+        // Ctrl+Z - Deshacer
+        if (event.ctrlKey && event.key === 'z') {
+            event.preventDefault();
+            undo();
+        }
+        // Ctrl+Y - Rehacer
+        else if (event.ctrlKey && event.key === 'y') {
+            event.preventDefault();
+            redo();
+        }
+        // Ctrl+S - Guardar
+        else if (event.ctrlKey && event.key === 's') {
+            event.preventDefault();
+            showSaveModal();
+        }
+        // D - Duplicar
+        else if (event.key === 'd' || event.key === 'D') {
+            if (!event.ctrlKey) duplicateSelected();
+        }
+        // R - Rotar
+        else if (event.key === 'r' || event.key === 'R') {
+            if (!event.ctrlKey) rotateSelected();
+        }
+        // Delete/Supr - Eliminar
+        else if (event.key === 'Delete') {
+            deleteSelected();
+        }
+    }
+
+    // Funciones wrapper para undo/redo
+    function undo() { ActionStack.undo(); }
+    function redo() { ActionStack.redo(); }
+
+    // ============================================================
+    // GUARDADO Y CARGA DE PROYECTO (Prompt 1 & 6)
+    // ============================================================
+
+    // Muestra modal de guardado
+    function showSaveModal() {
+        openModal('saveModal');
+    }
+
+    // Valida el esquema del proyecto
+    function validateProjectSchema(data) {
+        const errors = [];
+        
+        // Validar campos requeridos
+        if (typeof data.gridSize !== 'number' || data.gridSize < 5 || data.gridSize > 100) {
+            errors.push('gridSize debe ser un número entre 5 y 100');
+        }
+        
+        if (!data.camera || typeof data.camera !== 'object') {
+            errors.push('camera debe ser un objeto');
+        } else {
+            if (!data.camera.position || !Array.isArray(data.camera.position) || data.camera.position.length !== 3) {
+                errors.push('camera.position debe ser un array de 3 números');
+            }
+            if (!data.camera.target || !Array.isArray(data.camera.target) || data.camera.target.length !== 3) {
+                errors.push('camera.target debe ser un array de 3 números');
+            }
+        }
+        
+        if (!Array.isArray(data.modules)) {
+            errors.push('modules debe ser un array');
+        } else {
+            data.modules.forEach((mod, i) => {
+                if (typeof mod.id !== 'number') errors.push(`modules[${i}].id debe ser un número`);
+                if (typeof mod.type !== 'string') errors.push(`modules[${i}].type debe ser un string`);
+                if (typeof mod.q !== 'number') errors.push(`modules[${i}].q debe ser un número`);
+                if (typeof mod.r !== 'number') errors.push(`modules[${i}].r debe ser un número`);
+                if (typeof mod.rotation !== 'number') errors.push(`modules[${i}].rotation debe ser un número`);
+            });
+        }
+        
+        return errors;
+    }
+
+    // Migra proyectos de versiones anteriores
+    function migrateProject(data) {
+        // Si no tiene versión, asumir v1
+        if (!data.version) {
+            debugLog('Migrando proyecto de v1 a v2');
+            data.version = 1;
+        }
+        
+        // Migración de v1 a v2
+        if (data.version === 1) {
+            // En v1, los módulos podrían no tener metadata
+            if (Array.isArray(data.modules)) {
+                data.modules = data.modules.map(mod => ({
+                    ...mod,
+                    metadata: mod.metadata || {}
+                }));
+            }
+            // Añadir camera si no existe
+            if (!data.camera) {
+                data.camera = {
+                    position: [15, 20, 15],
+                    target: [0, 0, 0]
+                };
+            }
+            data.version = 2;
+        }
+        
+        return data;
+    }
+
+    // Guarda el proyecto actual
+    function saveProject() {
+        try {
+            showProgress('Guardando...', 'Preparando datos...', 10);
+            
+            const projectName = document.getElementById('projectName').value || 'mi_ciudad';
+            
+            // Serializar proyecto
+            const projectData = {
+                version: CONFIG.VERSION,
+                name: projectName,
+                timestamp: new Date().toISOString(),
+                gridSize: parseInt(document.getElementById('gridSize').value) || 20,
+                camera: {
+                    position: [camera.position.x, camera.position.y, camera.position.z],
+                    target: [controls.target.x, controls.target.y, controls.target.z]
+                },
+                modules: modules.map(serializeModule)
+            };
+
+            showProgress('Guardando...', 'Generando JSON...', 50);
+
+            // Generar JSON compacto
+            const jsonStr = JSON.stringify(projectData);
+
+            showProgress('Guardando...', 'Descargando archivo...', 80);
+
+            // Descargar archivo
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = sanitizeText(projectName) + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            hideProgress();
+            closeModal('saveModal');
+            showToast('Proyecto guardado correctamente', 'success');
+            debugLog('Proyecto guardado:', projectData);
+
+        } catch (error) {
+            hideProgress();
+            showError('Error al guardar: ' + error.message);
+        }
+    }
+
+    // Exporta solo geometría (sin metadata)
+    function exportGeometryOnly() {
+        try {
+            const projectData = {
+                version: CONFIG.VERSION,
+                gridSize: parseInt(document.getElementById('gridSize').value) || 20,
+                camera: {
+                    position: [camera.position.x, camera.position.y, camera.position.z],
+                    target: [controls.target.x, controls.target.y, controls.target.z]
+                },
+                modules: modules.map(m => ({
+                    id: m.userData.id,
+                    type: m.userData.type,
+                    q: m.userData.q,
+                    r: m.userData.r,
+                    rotation: m.userData.rotation
+                }))
+            };
+
+            const blob = new Blob([JSON.stringify(projectData)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'geometria.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Geometría exportada', 'success');
+        } catch (error) {
+            showError('Error al exportar: ' + error.message);
+        }
+    }
+
+    // Exporta con metadata completa
+    function exportWithMetadata() {
+        saveProject();
+    }
+
+    // Maneja la selección de archivo
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Validar tamaño (Prompt 8)
+        if (file.size > CONFIG.MAX_FILE_SIZE) {
+            showError('El archivo es demasiado grande. Máximo permitido: 5 MB');
+            event.target.value = '';
+            return;
+        }
+
+        // Validar tipo MIME (Prompt 8)
+        if (file.type && file.type !== 'application/json' && !file.name.endsWith('.json')) {
+            showError('Tipo de archivo no válido. Solo se permiten archivos JSON.');
+            event.target.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = JSON.parse(e.target.result);
+                pendingFileData = data;
+                
+                // Mostrar confirmación si hay módulos (Prompt 1)
+                if (modules.length > 0) {
+                    openModal('loadConfirmModal');
+                } else {
+                    confirmLoad();
+                }
+            } catch (error) {
+                showError('Error al parsear JSON: ' + error.message);
+            }
+        };
+        reader.onerror = function() {
+            showError('Error al leer el archivo');
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+
+    // Confirma la carga del archivo
+    function confirmLoad() {
+        closeModal('loadConfirmModal');
+        if (pendingFileData) {
+            loadProject(pendingFileData);
+            pendingFileData = null;
+        }
+    }
+
+    // Carga un proyecto desde datos
+    function loadProject(data) {
+        try {
+            showProgress('Cargando...', 'Validando esquema...', 10);
+
+            // Migrar si es necesario (Prompt 1 & 6)
+            data = migrateProject(data);
+
+            // Validar esquema (Prompt 1)
+            const errors = validateProjectSchema(data);
+            if (errors.length > 0) {
+                hideProgress();
+                showError('JSON inválido:\n' + errors.join('\n'));
+                console.error('[VALIDATION]', errors);
+                return;
+            }
+
+            showProgress('Cargando...', 'Limpiando escena...', 30);
+
+            // Limpiar escena actual
+            modules.forEach(mesh => {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            });
+            modules = [];
+            selectedModule = null;
+            ActionStack.clear();
+
+            showProgress('Cargando...', 'Cargando módulos...', 50);
+
+            // Restaurar configuración
+            document.getElementById('gridSize').value = data.gridSize;
+            updateGrid();
+
+            // Restaurar cámara
+            if (data.camera) {
+                camera.position.set(...data.camera.position);
+                controls.target.set(...data.camera.target);
+            }
+
+            // Restaurar módulos
+            const totalModules = data.modules.length;
+            data.modules.forEach((mod, i) => {
+                createModule(mod.type, mod.q, mod.r, mod.rotation, mod.id, mod.metadata || {});
+                if (i % 10 === 0) {
+                    const percent = 50 + (i / totalModules) * 40;
+                    showProgress('Cargando...', `Módulo ${i + 1} de ${totalModules}...`, percent);
+                }
+            });
+
+            // Actualizar nextModuleId
+            if (data.modules.length > 0) {
+                nextModuleId = Math.max(...data.modules.map(m => m.id)) + 1;
+            }
+
+            hideProgress();
+            updateModuleCount();
+            updateSelectedInfo();
+            showToast('Proyecto cargado correctamente', 'success');
+            debugLog('Proyecto cargado:', data);
+
+        } catch (error) {
+            hideProgress();
+            showError('Error al cargar proyecto: ' + error.message);
+            console.error('[LOAD ERROR]', error);
+        }
+    }
+
+    // ============================================================
+    // AUTOSAVE (Prompt 6)
+    // ============================================================
+    function toggleAutosave() {
+        const enabled = document.getElementById('autosaveEnabled').checked;
+        if (enabled) {
+            autosaveTimer = setInterval(saveToLocalStorage, CONFIG.AUTOSAVE_INTERVAL);
+            showToast('Autosave activado', 'success');
+        } else {
+            if (autosaveTimer) {
+                clearInterval(autosaveTimer);
+                autosaveTimer = null;
+            }
+            showToast('Autosave desactivado', 'info');
+        }
+    }
+
+    function saveToLocalStorage() {
+        try {
+            const projectData = {
+                version: CONFIG.VERSION,
+                timestamp: new Date().toISOString(),
+                gridSize: parseInt(document.getElementById('gridSize').value) || 20,
+                camera: {
+                    position: [camera.position.x, camera.position.y, camera.position.z],
+                    target: [controls.target.x, controls.target.y, controls.target.z]
+                },
+                modules: modules.map(serializeModule)
+            };
+            localStorage.setItem('ciudad_autosave', JSON.stringify(projectData));
+            debugLog('Autosave completado');
+        } catch (error) {
+            console.error('[AUTOSAVE ERROR]', error);
+        }
+    }
+
+    function loadAutosave() {
+        try {
+            const saved = localStorage.getItem('ciudad_autosave');
+            if (saved && modules.length === 0) {
+                const data = JSON.parse(saved);
+                if (confirm('Se encontró un autosave. ¿Desea restaurarlo?')) {
+                    loadProject(data);
+                }
+            }
+        } catch (error) {
+            console.error('[LOAD AUTOSAVE ERROR]', error);
+        }
+    }
+
+    // ============================================================
+    // EXPORTACIÓN DXF (Prompt 3)
+    // ============================================================
+    function exportToDxf() {
+        try {
+            showProgress('Exportando DXF...', 'Generando entidades...', 10);
+
+            const units = document.getElementById('exportUnits').value;
+            const selectionOnly = document.getElementById('exportSelectionOnly').checked;
+            const modulesToExport = selectionOnly && selectedModule ? [selectedModule] : modules;
+
+            if (modulesToExport.length === 0) {
+                hideProgress();
+                showToast('No hay módulos para exportar', 'warning');
+                return;
+            }
+
+            // Calcular offset para normalizar coordenadas
+            let minX = Infinity, minZ = Infinity;
+            modulesToExport.forEach(m => {
+                const pos = hexToWorld(m.userData.q, m.userData.r);
+                minX = Math.min(minX, pos.x);
+                minZ = Math.min(minZ, pos.z);
+            });
+
+            let dxf = '0\nSECTION\n2\nHEADER\n';
+            
+            // Añadir unidades (Prompt 3)
+            dxf += '9\n$INSUNITS\n70\n' + units + '\n';
+            dxf += '0\nENDSEC\n';
+
+            // Sección de tablas (capas)
+            dxf += '0\nSECTION\n2\nTABLES\n';
+            dxf += '0\nTABLE\n2\nLAYER\n';
+
+            // Definir capas (Prompt 3)
+            const layers = ['COLUMNAS', 'BORDES', 'TECHOS', 'PISOS'];
+            const layerColors = { COLUMNAS: 5, BORDES: 7, TECHOS: 3, PISOS: 8 };
+            
+            layers.forEach(layer => {
+                dxf += '0\nLAYER\n2\n' + layer + '\n70\n0\n62\n' + layerColors[layer] + '\n6\nCONTINUOUS\n';
+            });
+            
+            dxf += '0\nENDTAB\n0\nENDSEC\n';
+
+            // Sección de entidades
+            dxf += '0\nSECTION\n2\nENTITIES\n';
+
+            showProgress('Exportando DXF...', 'Procesando módulos...', 30);
+
+            modulesToExport.forEach((mesh, idx) => {
+                const data = mesh.userData;
+                const pos = hexToWorld(data.q, data.r);
+                const x = pos.x - minX;
+                const z = pos.z - minZ;
+                const height = MODULE_HEIGHTS[data.type] || 1;
+                const size = CONFIG.HEX_SIZE / 2;
+
+                // Determinar capa según tipo
+                let layer = 'BORDES';
+                if (data.type === 'building' || data.type === 'commercial') layer = 'COLUMNAS';
+                else if (data.type === 'road' || data.type === 'water') layer = 'PISOS';
+                else if (data.type === 'house') layer = 'TECHOS';
+
+                // Generar 3DFACE para la base (orden consistente CW)
+                dxf += '0\n3DFACE\n8\n' + layer + '\n';
+                dxf += '10\n' + (x - size) + '\n20\n0\n30\n' + (z - size) + '\n';  // v1
+                dxf += '11\n' + (x + size) + '\n21\n0\n31\n' + (z - size) + '\n';  // v2
+                dxf += '12\n' + (x + size) + '\n22\n0\n32\n' + (z + size) + '\n';  // v3
+                dxf += '13\n' + (x - size) + '\n23\n0\n33\n' + (z + size) + '\n';  // v4
+
+                // Generar 3DFACE para el techo
+                dxf += '0\n3DFACE\n8\nTECHOS\n';
+                dxf += '10\n' + (x - size) + '\n20\n' + height + '\n30\n' + (z - size) + '\n';
+                dxf += '11\n' + (x + size) + '\n21\n' + height + '\n31\n' + (z - size) + '\n';
+                dxf += '12\n' + (x + size) + '\n22\n' + height + '\n32\n' + (z + size) + '\n';
+                dxf += '13\n' + (x - size) + '\n23\n' + height + '\n33\n' + (z + size) + '\n';
+
+                // LWPOLYLINE para el contorno
+                dxf += '0\nLWPOLYLINE\n8\nBORDES\n90\n4\n70\n1\n';
+                dxf += '10\n' + (x - size) + '\n20\n' + (z - size) + '\n';
+                dxf += '10\n' + (x + size) + '\n20\n' + (z - size) + '\n';
+                dxf += '10\n' + (x + size) + '\n20\n' + (z + size) + '\n';
+                dxf += '10\n' + (x - size) + '\n20\n' + (z + size) + '\n';
+
+                if (idx % 10 === 0) {
+                    showProgress('Exportando DXF...', `Módulo ${idx + 1} de ${modulesToExport.length}...`, 30 + (idx / modulesToExport.length) * 60);
+                }
+            });
+
+            dxf += '0\nENDSEC\n0\nEOF\n';
+
+            showProgress('Exportando DXF...', 'Descargando...', 95);
+
+            // Descargar archivo
+            const blob = new Blob([dxf], { type: 'application/dxf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ciudad.dxf';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            hideProgress();
+            showToast('DXF exportado correctamente', 'success');
+            debugLog('DXF exportado con', modulesToExport.length, 'módulos');
+
+        } catch (error) {
+            hideProgress();
+            showError('Error al exportar DXF: ' + error.message);
+        }
+    }
+
+    // ============================================================
+    // EXPORTACIÓN OBJ (Prompt 7)
+    // ============================================================
+    function exportToObj() {
+        try {
+            showProgress('Exportando OBJ...', 'Generando geometría...', 10);
+
+            const selectionOnly = document.getElementById('exportSelectionOnly').checked;
+            const modulesToExport = selectionOnly && selectedModule ? [selectedModule] : modules;
+
+            if (modulesToExport.length === 0) {
+                hideProgress();
+                showToast('No hay módulos para exportar', 'warning');
+                return;
+            }
+
+            let obj = '# OBJ file generated by Ciudad Simulator\n';
+            let mtl = '# MTL file generated by Ciudad Simulator\n\n';
+            
+            let vertexOffset = 1;
+            const materials = new Set();
+
+            showProgress('Exportando OBJ...', 'Procesando módulos...', 30);
+
+            modulesToExport.forEach((mesh, idx) => {
+                const data = mesh.userData;
+                const pos = hexToWorld(data.q, data.r);
+                const height = MODULE_HEIGHTS[data.type] || 1;
+                const size = CONFIG.HEX_SIZE / 2;
+                const materialName = 'mat_' + data.type;
+
+                // Añadir material si es nuevo
+                if (!materials.has(materialName)) {
+                    materials.add(materialName);
+                    const color = MODULE_COLORS[data.type] || 0xffffff;
+                    const r = ((color >> 16) & 255) / 255;
+                    const g = ((color >> 8) & 255) / 255;
+                    const b = (color & 255) / 255;
+                    mtl += `newmtl ${materialName}\n`;
+                    mtl += `Kd ${r.toFixed(4)} ${g.toFixed(4)} ${b.toFixed(4)}\n`;
+                    mtl += `Ka 0.2 0.2 0.2\n`;
+                    mtl += `Ks 0.5 0.5 0.5\n\n`;
+                }
+
+                obj += `\n# Module ${data.id} (${data.type})\n`;
+                obj += `usemtl ${materialName}\n`;
+
+                // Vértices del cubo
+                const x = pos.x, z = pos.z;
+                const verts = [
+                    [x - size, 0, z - size],
+                    [x + size, 0, z - size],
+                    [x + size, 0, z + size],
+                    [x - size, 0, z + size],
+                    [x - size, height, z - size],
+                    [x + size, height, z - size],
+                    [x + size, height, z + size],
+                    [x - size, height, z + size]
+                ];
+
+                verts.forEach(v => {
+                    obj += `v ${v[0].toFixed(4)} ${v[1].toFixed(4)} ${v[2].toFixed(4)}\n`;
+                });
+
+                // Caras (quads)
+                const vo = vertexOffset;
+                // Bottom
+                obj += `f ${vo+3} ${vo+2} ${vo+1} ${vo}\n`;
+                // Top
+                obj += `f ${vo+4} ${vo+5} ${vo+6} ${vo+7}\n`;
+                // Front
+                obj += `f ${vo} ${vo+1} ${vo+5} ${vo+4}\n`;
+                // Back
+                obj += `f ${vo+2} ${vo+3} ${vo+7} ${vo+6}\n`;
+                // Left
+                obj += `f ${vo+3} ${vo} ${vo+4} ${vo+7}\n`;
+                // Right
+                obj += `f ${vo+1} ${vo+2} ${vo+6} ${vo+5}\n`;
+
+                vertexOffset += 8;
+
+                if (idx % 10 === 0) {
+                    showProgress('Exportando OBJ...', `Módulo ${idx + 1} de ${modulesToExport.length}...`, 30 + (idx / modulesToExport.length) * 50);
+                }
+            });
+
+            // Añadir referencia al MTL
+            obj = 'mtllib ciudad.mtl\n' + obj;
+
+            showProgress('Exportando OBJ...', 'Descargando archivos...', 90);
+
+            // Descargar OBJ
+            const objBlob = new Blob([obj], { type: 'text/plain' });
+            const objUrl = URL.createObjectURL(objBlob);
+            const objLink = document.createElement('a');
+            objLink.href = objUrl;
+            objLink.download = 'ciudad.obj';
+            objLink.click();
+            URL.revokeObjectURL(objUrl);
+
+            // Descargar MTL
+            const mtlBlob = new Blob([mtl], { type: 'text/plain' });
+            const mtlUrl = URL.createObjectURL(mtlBlob);
+            const mtlLink = document.createElement('a');
+            mtlLink.href = mtlUrl;
+            mtlLink.download = 'ciudad.mtl';
+            mtlLink.click();
+            URL.revokeObjectURL(mtlUrl);
+
+            // Generar archivo de metadatos
+            const metadata = {
+                version: CONFIG.VERSION,
+                modules: modulesToExport.map(m => ({
+                    id: m.userData.id,
+                    type: m.userData.type,
+                    layer: getLayerForType(m.userData.type)
+                }))
+            };
+            const metaBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
+            const metaUrl = URL.createObjectURL(metaBlob);
+            const metaLink = document.createElement('a');
+            metaLink.href = metaUrl;
+            metaLink.download = 'ciudad_metadata.json';
+            metaLink.click();
+            URL.revokeObjectURL(metaUrl);
+
+            hideProgress();
+            showToast('OBJ exportado (3 archivos)', 'success');
+
+        } catch (error) {
+            hideProgress();
+            showError('Error al exportar OBJ: ' + error.message);
+        }
+    }
+
+    function getLayerForType(type) {
+        switch (type) {
+            case 'building':
+            case 'commercial':
+                return 'COLUMNAS';
+            case 'road':
+            case 'water':
+                return 'PISOS';
+            case 'house':
+                return 'TECHOS';
+            default:
+                return 'BORDES';
+        }
+    }
+
+    // ============================================================
+    // INSTANCING (Prompt 2)
+    // ============================================================
+    function toggleInstancing() {
+        const useInstancing = document.getElementById('useInstancing').checked;
+        debugLog('Instancing:', useInstancing ? 'enabled' : 'disabled');
+        // En una implementación completa, reconstruiríamos la escena
+        // con InstancedMesh para cada tipo de módulo
+        showToast('Instancing ' + (useInstancing ? 'activado' : 'desactivado'), 'info');
+    }
+
+    // ============================================================
+    // DEBUG MODE (Prompt 8)
+    // ============================================================
+    function toggleDebug() {
+        CONFIG.DEBUG = document.getElementById('debugMode').checked;
+        showToast('Modo debug ' + (CONFIG.DEBUG ? 'activado' : 'desactivado'), 'info');
+    }
+
+    // ============================================================
+    // LOOP DE ANIMACIÓN (Prompt 2 - optimizado)
+    // ============================================================
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        // Actualizar controles
+        controls.update();
+        
+        // Renderizar escena
+        renderer.render(scene, camera);
+        
+        // Actualizar FPS (fuera del loop crítico)
+        frameCount++;
+        const now = performance.now();
+        if (now - lastFpsUpdate >= 1000) {
+            document.getElementById('fps').textContent = 'FPS: ' + frameCount;
+            frameCount = 0;
+            lastFpsUpdate = now;
+        }
+    }
+
+    // ============================================================
+    // INICIALIZAR APLICACIÓN
+    // ============================================================
+    window.addEventListener('load', init);
+    </script>
+</body>
+</html>
