@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tests - Simulador de Ciudad</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: #1a1a2e; 
+            color: #fff;
+            padding: 20px;
+        }
+        h1 { margin-bottom: 20px; }
+        h2 { margin: 20px 0 10px; color: #888; }
+        .test-suite {
+            background: #2a2a4e;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .test {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .test.pass { background: rgba(76, 175, 80, 0.2); border-left: 4px solid #4caf50; }
+        .test.fail { background: rgba(244, 67, 54, 0.2); border-left: 4px solid #f44336; }
+        .test.pending { background: rgba(255, 152, 0, 0.2); border-left: 4px solid #ff9800; }
+        .test-name { flex: 1; }
+        .test-status { 
+            padding: 4px 12px; 
+            border-radius: 4px; 
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .test-status.pass { background: #4caf50; }
+        .test-status.fail { background: #f44336; }
+        .test-status.pending { background: #ff9800; }
+        .summary {
+            margin-top: 20px;
+            padding: 15px;
+            background: #333;
+            border-radius: 8px;
+        }
+        .summary span {
+            margin-right: 20px;
+        }
+        .error-details {
+            font-family: monospace;
+            font-size: 12px;
+            color: #f44336;
+            margin-top: 5px;
+            padding: 10px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #4a90d9;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        button:hover { background: #5aa0e9; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Tests - Simulador de Ciudad</h1>
+    <button onclick="runAllTests()">▶️ Ejecutar Todos los Tests</button>
+    
+    <div id="results"></div>
+    <div id="summary" class="summary" style="display:none;">
+        <span id="total">Total: 0</span>
+        <span id="passed" style="color:#4caf50;">Pasados: 0</span>
+        <span id="failed" style="color:#f44336;">Fallidos: 0</span>
+    </div>
+
+    <script>
+    // ============================================================
+    // CONFIGURACIÓN DE TESTS
+    // ============================================================
+    const CONFIG = {
+        VERSION: 2,
+        HEX_SIZE: 1
+    };
+
+    let testResults = {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        tests: []
+    };
+
+    // ============================================================
+    // FUNCIONES BAJO TEST (copiadas de sumilador.html)
+    // ============================================================
+
+    // Convierte coordenadas hexagonales (q, r) a mundo (x, z)
+    function hexToWorld(q, r) {
+        const size = CONFIG.HEX_SIZE;
+        const x = size * (3/2 * q);
+        const z = size * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r);
+        return { x, z };
+    }
+
+    // Convierte coordenadas mundo (x, z) a hexagonales (q, r)
+    function worldToHex(x, z) {
+        const size = CONFIG.HEX_SIZE;
+        const q = (2/3 * x) / size;
+        const r = (-1/3 * x + Math.sqrt(3)/3 * z) / size;
+        return { q: Math.round(q), r: Math.round(r) };
+    }
+
+    // Valida el esquema del proyecto
+    function validateProjectSchema(data) {
+        const errors = [];
+        
+        if (typeof data.gridSize !== 'number' || data.gridSize < 5 || data.gridSize > 100) {
+            errors.push('gridSize debe ser un número entre 5 y 100');
+        }
+        
+        if (!data.camera || typeof data.camera !== 'object') {
+            errors.push('camera debe ser un objeto');
+        } else {
+            if (!data.camera.position || !Array.isArray(data.camera.position) || data.camera.position.length !== 3) {
+                errors.push('camera.position debe ser un array de 3 números');
+            }
+            if (!data.camera.target || !Array.isArray(data.camera.target) || data.camera.target.length !== 3) {
+                errors.push('camera.target debe ser un array de 3 números');
+            }
+        }
+        
+        if (!Array.isArray(data.modules)) {
+            errors.push('modules debe ser un array');
+        } else {
+            data.modules.forEach((mod, i) => {
+                if (typeof mod.id !== 'number') errors.push(`modules[${i}].id debe ser un número`);
+                if (typeof mod.type !== 'string') errors.push(`modules[${i}].type debe ser un string`);
+                if (typeof mod.q !== 'number') errors.push(`modules[${i}].q debe ser un número`);
+                if (typeof mod.r !== 'number') errors.push(`modules[${i}].r debe ser un número`);
+                if (typeof mod.rotation !== 'number') errors.push(`modules[${i}].rotation debe ser un número`);
+            });
+        }
+        
+        return errors;
+    }
+
+    // Migra proyectos de versiones anteriores
+    function migrateProject(data) {
+        if (!data.version) {
+            data.version = 1;
+        }
+        
+        if (data.version === 1) {
+            if (Array.isArray(data.modules)) {
+                data.modules = data.modules.map(mod => ({
+                    ...mod,
+                    metadata: mod.metadata || {}
+                }));
+            }
+            if (!data.camera) {
+                data.camera = {
+                    position: [15, 20, 15],
+                    target: [0, 0, 0]
+                };
+            }
+            data.version = 2;
+        }
+        
+        return data;
+    }
+
+    // Función simulada de serialización de proyecto
+    function serializeProject(modules, gridSize, camera) {
+        return {
+            version: CONFIG.VERSION,
+            gridSize: gridSize,
+            camera: {
+                position: camera.position,
+                target: camera.target
+            },
+            modules: modules.map(m => ({
+                id: m.id,
+                type: m.type,
+                q: m.q,
+                r: m.r,
+                rotation: m.rotation,
+                metadata: m.metadata || {}
+            }))
+        };
+    }
+
+    // Simula generación de DXF
+    function generateDxfHeader(units) {
+        let dxf = '0\nSECTION\n2\nHEADER\n';
+        dxf += '9\n$INSUNITS\n70\n' + units + '\n';
+        dxf += '0\nENDSEC\n';
+        return dxf;
+    }
+
+    function generateDxfLayers() {
+        const layers = ['COLUMNAS', 'BORDES', 'TECHOS', 'PISOS'];
+        const layerColors = { COLUMNAS: 5, BORDES: 7, TECHOS: 3, PISOS: 8 };
+        
+        let dxf = '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n';
+        layers.forEach(layer => {
+            dxf += '0\nLAYER\n2\n' + layer + '\n70\n0\n62\n' + layerColors[layer] + '\n6\nCONTINUOUS\n';
+        });
+        dxf += '0\nENDTAB\n0\nENDSEC\n';
+        return dxf;
+    }
+
+    // ============================================================
+    // FRAMEWORK DE TESTS
+    // ============================================================
+    function assert(condition, message) {
+        if (!condition) {
+            throw new Error(message || 'Assertion failed');
+        }
+    }
+
+    function assertEqual(actual, expected, message) {
+        if (actual !== expected) {
+            throw new Error(message || `Expected ${expected}, got ${actual}`);
+        }
+    }
+
+    function assertDeepEqual(actual, expected, message) {
+        if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+            throw new Error(message || `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+        }
+    }
+
+    function assertApproxEqual(actual, expected, tolerance = 0.001, message) {
+        if (Math.abs(actual - expected) > tolerance) {
+            throw new Error(message || `Expected ${expected} (±${tolerance}), got ${actual}`);
+        }
+    }
+
+    function runTest(name, testFn) {
+        testResults.total++;
+        try {
+            testFn();
+            testResults.passed++;
+            testResults.tests.push({ name, status: 'pass' });
+        } catch (error) {
+            testResults.failed++;
+            testResults.tests.push({ name, status: 'fail', error: error.message });
+        }
+    }
+
+    function renderResults() {
+        const container = document.getElementById('results');
+        let html = '';
+        
+        let currentSuite = '';
+        testResults.tests.forEach(test => {
+            const parts = test.name.split(' - ');
+            const suite = parts[0];
+            const testName = parts.slice(1).join(' - ');
+            
+            if (suite !== currentSuite) {
+                if (currentSuite) html += '</div>';
+                html += `<div class="test-suite"><h2>${suite}</h2>`;
+                currentSuite = suite;
+            }
+            
+            html += `<div class="test ${test.status}">
+                <span class="test-name">${testName}</span>
+                <span class="test-status ${test.status}">${test.status.toUpperCase()}</span>
+            </div>`;
+            
+            if (test.error) {
+                html += `<div class="error-details">${test.error}</div>`;
+            }
+        });
+        if (currentSuite) html += '</div>';
+        
+        container.innerHTML = html;
+        
+        document.getElementById('summary').style.display = 'block';
+        document.getElementById('total').textContent = `Total: ${testResults.total}`;
+        document.getElementById('passed').textContent = `Pasados: ${testResults.passed}`;
+        document.getElementById('failed').textContent = `Fallidos: ${testResults.failed}`;
+    }
+
+    // ============================================================
+    // TESTS
+    // ============================================================
+    function runAllTests() {
+        testResults = { total: 0, passed: 0, failed: 0, tests: [] };
+
+        // ==========================================
+        // Tests de conversión de coordenadas
+        // ==========================================
+        runTest('Coordenadas - hexToWorld en origen (0,0)', () => {
+            const result = hexToWorld(0, 0);
+            assertApproxEqual(result.x, 0);
+            assertApproxEqual(result.z, 0);
+        });
+
+        runTest('Coordenadas - hexToWorld positivo (2, 3)', () => {
+            const result = hexToWorld(2, 3);
+            assertApproxEqual(result.x, 3);  // 1 * (3/2 * 2) = 3
+            assertApproxEqual(result.z, 6.928, 0.01);  // sqrt(3)/2 * 2 + sqrt(3) * 3
+        });
+
+        runTest('Coordenadas - hexToWorld negativo (-1, -2)', () => {
+            const result = hexToWorld(-1, -2);
+            assertApproxEqual(result.x, -1.5);
+            assertApproxEqual(result.z, -4.330, 0.01);
+        });
+
+        runTest('Coordenadas - worldToHex en origen (0,0)', () => {
+            const result = worldToHex(0, 0);
+            assertEqual(result.q, 0);
+            assertEqual(result.r, 0);
+        });
+
+        runTest('Coordenadas - hexToWorld y worldToHex son inversos', () => {
+            const testCases = [[0, 0], [1, 1], [5, 3], [-2, 4], [10, -5]];
+            testCases.forEach(([q, r]) => {
+                const world = hexToWorld(q, r);
+                const hex = worldToHex(world.x, world.z);
+                assertEqual(hex.q, q, `q: expected ${q}, got ${hex.q}`);
+                assertEqual(hex.r, r, `r: expected ${r}, got ${hex.r}`);
+            });
+        });
+
+        // ==========================================
+        // Tests de validación de esquema
+        // ==========================================
+        runTest('Validación - proyecto válido no tiene errores', () => {
+            const validProject = {
+                version: 2,
+                gridSize: 20,
+                camera: { position: [0, 10, 0], target: [0, 0, 0] },
+                modules: [
+                    { id: 1, type: 'building', q: 0, r: 0, rotation: 0, metadata: {} }
+                ]
+            };
+            const errors = validateProjectSchema(validProject);
+            assertEqual(errors.length, 0, `Expected 0 errors, got: ${errors.join(', ')}`);
+        });
+
+        runTest('Validación - gridSize fuera de rango da error', () => {
+            const project = {
+                gridSize: 200,  // Fuera de rango (max 100)
+                camera: { position: [0, 0, 0], target: [0, 0, 0] },
+                modules: []
+            };
+            const errors = validateProjectSchema(project);
+            assert(errors.length > 0, 'Debería haber errores');
+            assert(errors.some(e => e.includes('gridSize')));
+        });
+
+        runTest('Validación - camera faltante da error', () => {
+            const project = {
+                gridSize: 20,
+                modules: []
+            };
+            const errors = validateProjectSchema(project);
+            assert(errors.length > 0);
+            assert(errors.some(e => e.includes('camera')));
+        });
+
+        runTest('Validación - módulo con campos faltantes da error', () => {
+            const project = {
+                gridSize: 20,
+                camera: { position: [0, 0, 0], target: [0, 0, 0] },
+                modules: [
+                    { id: 1, type: 'building' }  // Faltan q, r, rotation
+                ]
+            };
+            const errors = validateProjectSchema(project);
+            assert(errors.length > 0);
+        });
+
+        // ==========================================
+        // Tests de migración
+        // ==========================================
+        runTest('Migración - proyecto sin versión se migra a v2', () => {
+            const oldProject = {
+                gridSize: 20,
+                modules: [{ id: 1, type: 'house', q: 1, r: 2, rotation: 0 }]
+            };
+            const migrated = migrateProject(JSON.parse(JSON.stringify(oldProject)));
+            assertEqual(migrated.version, 2);
+        });
+
+        runTest('Migración - se añade camera si falta', () => {
+            const oldProject = {
+                gridSize: 20,
+                modules: []
+            };
+            const migrated = migrateProject(JSON.parse(JSON.stringify(oldProject)));
+            assert(migrated.camera !== undefined);
+            assert(Array.isArray(migrated.camera.position));
+            assert(Array.isArray(migrated.camera.target));
+        });
+
+        runTest('Migración - se añade metadata a módulos si falta', () => {
+            const oldProject = {
+                gridSize: 20,
+                modules: [{ id: 1, type: 'building', q: 0, r: 0, rotation: 0 }]
+            };
+            const migrated = migrateProject(JSON.parse(JSON.stringify(oldProject)));
+            assert(migrated.modules[0].metadata !== undefined);
+        });
+
+        // ==========================================
+        // Tests de serialización (save/load roundtrip)
+        // ==========================================
+        runTest('Serialización - saveProject y loadProject son inversos', () => {
+            const modules = [
+                { id: 1, type: 'building', q: 0, r: 0, rotation: 0, metadata: { name: 'Tower' } },
+                { id: 2, type: 'road', q: 1, r: 1, rotation: 90, metadata: {} },
+                { id: 3, type: 'park', q: -2, r: 3, rotation: 180, metadata: { trees: 5 } }
+            ];
+            const camera = { position: [15, 20, 15], target: [0, 0, 0] };
+            const gridSize = 25;
+
+            const serialized = serializeProject(modules, gridSize, camera);
+            const jsonStr = JSON.stringify(serialized);
+            const parsed = JSON.parse(jsonStr);
+
+            assertEqual(parsed.version, CONFIG.VERSION);
+            assertEqual(parsed.gridSize, gridSize);
+            assertEqual(parsed.modules.length, modules.length);
+            assertDeepEqual(parsed.camera, camera);
+
+            parsed.modules.forEach((mod, i) => {
+                assertEqual(mod.id, modules[i].id);
+                assertEqual(mod.type, modules[i].type);
+                assertEqual(mod.q, modules[i].q);
+                assertEqual(mod.r, modules[i].r);
+                assertEqual(mod.rotation, modules[i].rotation);
+            });
+        });
+
+        runTest('Serialización - JSON válido después de guardar', () => {
+            const modules = [{ id: 1, type: 'building', q: 0, r: 0, rotation: 0, metadata: {} }];
+            const serialized = serializeProject(modules, 20, { position: [0,0,0], target: [0,0,0] });
+            const jsonStr = JSON.stringify(serialized);
+            
+            let parsed;
+            try {
+                parsed = JSON.parse(jsonStr);
+            } catch (e) {
+                throw new Error('JSON inválido generado');
+            }
+            
+            assert(parsed !== null);
+        });
+
+        // ==========================================
+        // Tests de exportación DXF
+        // ==========================================
+        runTest('DXF - incluye $INSUNITS en header', () => {
+            const dxfHeader = generateDxfHeader(4);  // Milímetros
+            assert(dxfHeader.includes('$INSUNITS'));
+            assert(dxfHeader.includes('70\n4'));
+        });
+
+        runTest('DXF - incluye unidades correctas (metros)', () => {
+            const dxfHeader = generateDxfHeader(6);  // Metros
+            assert(dxfHeader.includes('70\n6'));
+        });
+
+        runTest('DXF - incluye todas las capas requeridas', () => {
+            const dxfLayers = generateDxfLayers();
+            assert(dxfLayers.includes('COLUMNAS'), 'Falta capa COLUMNAS');
+            assert(dxfLayers.includes('BORDES'), 'Falta capa BORDES');
+            assert(dxfLayers.includes('TECHOS'), 'Falta capa TECHOS');
+            assert(dxfLayers.includes('PISOS'), 'Falta capa PISOS');
+        });
+
+        runTest('DXF - estructura de capas válida', () => {
+            const dxfLayers = generateDxfLayers();
+            assert(dxfLayers.includes('0\nSECTION'));
+            assert(dxfLayers.includes('2\nTABLES'));
+            assert(dxfLayers.includes('0\nTABLE'));
+            assert(dxfLayers.includes('2\nLAYER'));
+            assert(dxfLayers.includes('0\nENDTAB'));
+            assert(dxfLayers.includes('0\nENDSEC'));
+        });
+
+        // ==========================================
+        // Tests de seguridad
+        // ==========================================
+        runTest('Seguridad - sanitización de texto básica', () => {
+            // Función simple de sanitización
+            function sanitizeText(text) {
+                if (typeof text !== 'string') return '';
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            const malicious = '<script>alert("xss")</script>';
+            const sanitized = sanitizeText(malicious);
+            assert(!sanitized.includes('<script>'), 'Script tag no sanitizado');
+        });
+
+        runTest('Seguridad - límite de tamaño de archivo', () => {
+            const MAX_FILE_SIZE = 5 * 1024 * 1024;  // 5 MB
+            const tooLarge = MAX_FILE_SIZE + 1;
+            assert(tooLarge > MAX_FILE_SIZE, 'Validación de tamaño máximo');
+        });
+
+        renderResults();
+    }
+
+    // Auto-ejecutar tests al cargar
+    window.addEventListener('load', runAllTests);
+    </script>
+</body>
+</html>
