@@ -131,6 +131,9 @@
     
     <div id="shortcuts">
         <h4>⌨️ Atajos</h4>
+        <div class="shortcut"><kbd>Click</kbd> Seleccionar</div>
+        <div class="shortcut"><kbd>Arrastrar</kbd> Mover módulo</div>
+        <div class="shortcut"><kbd>Scroll</kbd> Rotar módulo</div>
         <div class="shortcut"><kbd>Ctrl+Z</kbd> Deshacer</div>
         <div class="shortcut"><kbd>Ctrl+Y</kbd> Rehacer</div>
         <div class="shortcut"><kbd>D</kbd> Duplicar</div>
@@ -241,6 +244,10 @@
     let frameCount = 0;                // Contador de frames para FPS
     let lastFpsUpdate = 0;             // Último update de FPS
     let nextModuleId = 1;              // ID único para módulos
+    let isDragging = false;            // Si estamos arrastrando un módulo
+    let dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Plano para arrastrar
+    let dragOffset = new THREE.Vector3(); // Offset del arrastre
+    let originalPosition = { q: 0, r: 0 }; // Posición original antes de mover
 
     // ============================================================
     // UNDO/REDO STACK (Prompt 4)
@@ -456,7 +463,10 @@
 
         // Event listeners
         window.addEventListener('resize', onWindowResize);
-        renderer.domElement.addEventListener('click', onMouseClick);
+        renderer.domElement.addEventListener('mousedown', onMouseDown);
+        renderer.domElement.addEventListener('mousemove', onMouseMove);
+        renderer.domElement.addEventListener('mouseup', onMouseUp);
+        renderer.domElement.addEventListener('wheel', onMouseWheel, { passive: false });
         document.addEventListener('keydown', onKeyDown);
 
         // Iniciar loop de renderizado
@@ -487,6 +497,41 @@
     // GESTIÓN DE MÓDULOS
     // ============================================================
 
+    // Crea geometría octagonal (8 lados)
+    function createOctagonGeometry(radius, height) {
+        const shape = new THREE.Shape();
+        const sides = 8;
+        
+        // Crear el perfil octagonal en el plano XZ
+        for (let i = 0; i < sides; i++) {
+            const angle = (i / sides) * Math.PI * 2;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            
+            if (i === 0) {
+                shape.moveTo(x, y);
+            } else {
+                shape.lineTo(x, y);
+            }
+        }
+        shape.closePath();
+        
+        // Extruir para crear el volumen
+        const extrudeSettings = {
+            steps: 1,
+            depth: height,
+            bevelEnabled: false
+        };
+        
+        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        
+        // Rotar la geometría para que esté vertical (eje Y)
+        geometry.rotateX(Math.PI / 2);
+        geometry.translate(0, 0, 0);
+        
+        return geometry;
+    }
+
     // Crea un nuevo módulo
     function createModule(type, q, r, rotation = 0, id = null, metadata = {}) {
         const moduleId = id || nextModuleId++;
@@ -497,12 +542,18 @@
         // Crear geometría según tipo
         let geometry;
         if (type === 'road' || type === 'water' || type === 'park') {
+            // Para pisos/caminos, usar geometría más plana
             geometry = new THREE.BoxGeometry(CONFIG.HEX_SIZE * 1.5, height, CONFIG.HEX_SIZE * 1.5);
         } else {
-            geometry = new THREE.BoxGeometry(CONFIG.HEX_SIZE, height, CONFIG.HEX_SIZE);
+            // Para edificios y casas, usar octágonos
+            const radius = CONFIG.HEX_SIZE * 0.55; // Radio del octágono
+            geometry = createOctagonGeometry(radius, height);
         }
 
-        const material = new THREE.MeshLambertMaterial({ color: color });
+        const material = new THREE.MeshLambertMaterial({ 
+            color: color,
+            emissive: 0x000000
+        });
         const mesh = new THREE.Mesh(geometry, material);
         
         mesh.position.set(worldPos.x, height / 2, worldPos.z);
@@ -680,28 +731,123 @@
     }
 
     // ============================================================
-    // SELECCIÓN CON MOUSE
+    // SELECCIÓN Y MANIPULACIÓN CON MOUSE
     // ============================================================
-    function onMouseClick(event) {
+    function onMouseDown(event) {
+        event.preventDefault();
+        
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
         raycaster.setFromCamera(mouse, camera);
         const intersects = raycaster.intersectObjects(modules);
 
-        // Deseleccionar anterior
-        if (selectedModule) {
-            selectedModule.material.emissive.setHex(0x000000);
-        }
-
         if (intersects.length > 0) {
+            // Seleccionar módulo
+            if (selectedModule && selectedModule !== intersects[0].object) {
+                selectedModule.material.emissive.setHex(0x000000);
+            }
+            
             selectedModule = intersects[0].object;
             selectedModule.material.emissive.setHex(0x444444);
+            
+            // Preparar para arrastrar
+            controls.enabled = false;
+            isDragging = true;
+            
+            // Guardar posición original para undo
+            originalPosition.q = selectedModule.userData.q;
+            originalPosition.r = selectedModule.userData.r;
+            
+            // Configurar plano de arrastre
+            dragPlane.setFromNormalAndCoplanarPoint(
+                camera.getWorldDirection(dragPlane.normal),
+                intersects[0].point
+            );
+            
+            updateSelectedInfo();
         } else {
-            selectedModule = null;
+            // Deseleccionar si hacemos click en el vacío
+            if (selectedModule) {
+                selectedModule.material.emissive.setHex(0x000000);
+                selectedModule = null;
+                updateSelectedInfo();
+            }
         }
-
-        updateSelectedInfo();
+    }
+    
+    function onMouseMove(event) {
+        if (!isDragging || !selectedModule) return;
+        
+        event.preventDefault();
+        
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+        raycaster.setFromCamera(mouse, camera);
+        
+        const intersectPoint = new THREE.Vector3();
+        raycaster.ray.intersectPlane(dragPlane, intersectPoint);
+        
+        if (intersectPoint) {
+            // Actualizar posición del módulo
+            selectedModule.position.x = intersectPoint.x;
+            selectedModule.position.z = intersectPoint.z;
+            
+            // Convertir a coordenadas hexagonales (snap a grilla)
+            const hexCoords = worldToHex(intersectPoint.x, intersectPoint.z);
+            const snappedPos = hexToWorld(hexCoords.q, hexCoords.r);
+            
+            selectedModule.position.x = snappedPos.x;
+            selectedModule.position.z = snappedPos.z;
+            
+            selectedModule.userData.q = hexCoords.q;
+            selectedModule.userData.r = hexCoords.r;
+            
+            updateSelectedInfo();
+        }
+    }
+    
+    function onMouseUp(event) {
+        if (isDragging && selectedModule) {
+            // Registrar movimiento en el historial de undo
+            if (originalPosition.q !== selectedModule.userData.q || 
+                originalPosition.r !== selectedModule.userData.r) {
+                ActionStack.push({
+                    type: 'MOVE',
+                    moduleId: selectedModule.userData.id,
+                    oldQ: originalPosition.q,
+                    oldR: originalPosition.r,
+                    newQ: selectedModule.userData.q,
+                    newR: selectedModule.userData.r
+                });
+                showToast('Módulo movido', 'info');
+            }
+        }
+        
+        isDragging = false;
+        controls.enabled = true;
+    }
+    
+    function onMouseWheel(event) {
+        if (!selectedModule) return;
+        
+        event.preventDefault();
+        
+        // Rotar el módulo seleccionado con la rueda del mouse
+        const rotationStep = event.deltaY > 0 ? -45 : 45; // 45 grados por scroll
+        const oldRotation = selectedModule.userData.rotation;
+        const newRotation = (oldRotation + rotationStep) % 360;
+        
+        ActionStack.push({
+            type: 'ROTATE',
+            moduleId: selectedModule.userData.id,
+            oldRotation: oldRotation,
+            newRotation: newRotation
+        });
+        
+        setModuleRotation(selectedModule.userData.id, newRotation);
+        showToast(`Rotado a ${newRotation}°`, 'info');
     }
 
     // ============================================================
