@@ -1,0 +1,74 @@
+# AutoCAD Files
+*.bak
+*.dwl
+*.dwl2
+*.dxf~
+*.sv$
+*.tmp
+*-shx.log
+
+# AutoCAD Backup and Temporary Files
+*.dwg.bak
+*.dwg~
+*.dwl
+*.dwl2
+*.dxf.bak
+*.ac$
+*.bak
+
+# AutoCAD Plot Files
+*.dwf
+*.plt
+
+# AutoCAD Standards Files (solo si no son necesarios)
+# *.dws
+
+# Logs
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary directories
+/tmp/
+temp/
+
+# User-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results (si usas plugins o scripts)
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+
+# Archivos de prueba temporales
+test_*.dwg
+prueba_*.dwg
+
+# Archivos grandes de referencia (descomentar si no se deben versionar)
+# *.pdf
+# referencias/*.dwg
+# referencias/*.jpg
+# referencias/*.png
+
+# Archivos de exportación 3D grandes (opcional)
+# *.fbx
+# *.obj
+# *.stl
+
+# Scripts temporales
+*.scr~
+*.lsp~
+
+# Archivos de bloqueo
+*.lock
