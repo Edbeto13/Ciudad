@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Pirámides Octagonales - Escala 1:200</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #151515; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        canvas { display: block; outline: none; }
+        
+        .panel {
+            position: absolute;
+            background: rgba(25, 25, 25, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid #444;
+            color: #eee;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+        
+        .toolbar { top: 20px; left: 20px; width: 280px; }
+        .properties { top: 20px; right: 20px; width: 280px; display: none; }
+        
+        button {
+            width: 100%; padding: 12px; margin-bottom: 8px;
+            background: #2a2a2a; border: 1px solid #444; color: #ccc;
+            border-radius: 6px; font-weight: 600; font-size: 11px; letter-spacing: 0.5px;
+            cursor: pointer; transition: all 0.2s; text-transform: uppercase;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        button:hover { background: #3a3a3a; border-color: #60a5fa; color: white; }
+        button.btn-special { background: #4f46e5; border-color: #4338ca; color: white; }
+        button.btn-special:hover { background: #4338ca; box-shadow: 0 0 15px rgba(79, 70, 229, 0.4); }
+        button.btn-alt { background: #0891b2; border-color: #0e7490; color: white; }
+        button.btn-alt:hover { background: #0e7490; box-shadow: 0 0 15px rgba(8, 145, 178, 0.4); }
+        button.btn-danger { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; margin-top: 16px;}
+        button.btn-danger:hover { background: #7f1d1d; color: white; }
+
+        .control-group { margin-bottom: 12px; background: #222; padding: 10px; border-radius: 6px; border: 1px solid #333; }
+        input[type=range] { width: 100%; accent-color: #3b82f6; margin: 10px 0 4px 0; cursor: pointer; }
+        label { font-size: 10px; text-transform: uppercase; color: #888; display: flex; justify-content: space-between; letter-spacing: 1px; }
+        .val { color: #60a5fa; font-family: monospace; font-size: 11px; }
+
+        .snap-badge {
+            position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+            background: #059669; color: white; padding: 8px 20px; border-radius: 30px;
+            font-weight: bold; font-size: 13px; opacity: 0; transition: opacity 0.2s;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4); pointer-events: none;
+            display: flex; align-items: center; gap: 8px; border: 1px solid #34d399;
+        }
+        .stats-box { margin-top: 15px; border-top: 1px solid #333; padding-top: 12px; font-size: 10px; color: #666; line-height: 1.5; }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+      }
+    }
+    </script>
+</head>
+<body>
+
+    <div class="panel toolbar">
+        <h2 class="text-xs font-bold text-blue-400 uppercase mb-4 border-b border-gray-700 pb-2 tracking-wider">Pirámides 1:200</h2>
+        
+        <button onclick="editor.showBaseArea()" class="btn-alt">
+            <span>▭</span> Mostrar Base 140×100m
+        </button>
+        <button onclick="editor.addPyramid()" class="btn-special">
+            <span>△</span> Añadir Pirámide (6→2)
+        </button>
+        <button onclick="editor.generatePyramidGrid()">
+            <span>▦</span> Generar Grid 2×12 Pirámides
+        </button>
+
+        <div class="h-px bg-gray-700 my-4"></div>
+        
+        <button onclick="editor.addOctagon()">
+            <span>⬡</span> Módulo Octagonal 50m²
+        </button>
+        <button onclick="editor.generatePerimeterRoad()" class="btn-alt">
+            <span>□</span> Carretera Perimetral
+        </button>
+        <button onclick="editor.addStraight()"><span>┃</span> Añadir Recta</button>
+        <button onclick="editor.addCurve()"><span>C</span> Añadir Codo 90°</button>
+        <button onclick="editor.addParametricRoundabout()" class="btn-special">
+            <span>◎</span> Glorieta Paramétrica
+        </button>
+        <button onclick="editor.exportDXF()">⬇ Exportar DXF</button>
+
+        <div class="stats-box">
+            <strong>Escala 1:200</strong> | Base: 70×50cm<br>
+            • <strong>Carretera:</strong> 4 rectas + 4 codos (R=25m) + glorieta central<br>
+            • <strong>Octágono:</strong> 50m², V-V: 4.2cm, C-C: 3.88cm<br>
+            • <strong>Pirámide:</strong> 6→2 oct, 25.2×3.88cm
+        </div>
+    </div>
+
+    <div class="panel properties" id="propPanel">
+        <h2 class="text-xs font-bold text-green-400 uppercase mb-4 border-b border-gray-700 pb-2 tracking-wider">Editar Pieza</h2>
+        
+        <!-- Control Recta -->
+        <div id="controls-straight" class="control-group">
+            <label>Longitud <span id="lblLen" class="val">100m</span></label>
+            <input type="range" id="rngLen" min="10" max="2000" step="10">
+        </div>
+
+        <!-- Control Curva / Rotonda -->
+        <div id="controls-curve" class="control-group" style="display:none;">
+            <label>Radio Eje <span id="lblRad" class="val">50m</span></label>
+            <input type="range" id="rngRad" min="10" max="1000" step="5">
+        </div>
+
+        <!-- Control Glorieta Paramétrica -->
+        <div id="controls-roundabout" class="control-group" style="display:none;">
+            <label>Diámetro <span id="lblDiam" class="val">50m</span></label>
+            <input type="range" id="rngDiam" min="10" max="100" step="1">
+            <div style="font-size:9px; color:#666; margin-top:4px;">Ancho fijo: 10m | Rango: 10-100m</div>
+        </div>
+
+        <!-- Rotación Común -->
+        <div class="control-group">
+            <label>Rotación <span id="lblRot" class="val">0°</span></label>
+            <input type="range" id="rngRot" min="0" max="360" step="5">
+        </div>
+
+        <button onclick="editor.deleteSelected()" class="btn-danger">Eliminar</button>
+    </div>
+
+    <div id="snapMsg" class="snap-badge">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        SNAP CONECTADO
+    </div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    class RoadEditor {
+        constructor() {
+            this.scene = new THREE.Scene();
+            this.scene.background = new THREE.Color(0x151515);
+            
+            this.camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 5000);
+            this.camera.position.set(0, 150, 180); // Vista más cercana para escala 1:200 
+
+            this.renderer = new THREE.WebGLRenderer({ antialias: true });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(this.renderer.domElement);
+
+            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
+
+            const amb = new THREE.AmbientLight(0xffffff, 0.6);
+            this.scene.add(amb);
+            const dir = new THREE.DirectionalLight(0xffffff, 1);
+            dir.position.set(500, 1000, 500);
+            dir.castShadow = true;
+            dir.shadow.mapSize.width = 4096;
+            dir.shadow.mapSize.height = 4096;
+            dir.shadow.camera.left = -2000; dir.shadow.camera.right = 2000;
+            dir.shadow.camera.top = 2000; dir.shadow.camera.bottom = -2000;
+            this.scene.add(dir);
+
+            const grid = new THREE.GridHelper(200, 20, 0x333333, 0x222222); // Grid 200m con 10m divisiones
+            this.scene.add(grid);
+            this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+            // === CONSTANTES ESCALA 1:200 ===
+            this.SCALE = 200; // 1:200
+            this.BASE_REAL_X = 140; // metros reales (70cm maqueta)
+            this.BASE_REAL_Z = 100; // metros reales (50cm maqueta)
+            this.OCT_AREA = 50;     // m² por octágono
+            this.OCT_HEIGHT = 3;    // altura módulo (3m real)
+            // Octágono 50m²: Radio = sqrt(50 / (2*sqrt(2))) ≈ 4.204m (V-V real)
+            this.OCT_RADIUS = Math.sqrt(this.OCT_AREA / (2 * Math.sqrt(2))); // ~4.204m
+            // Distancia cara a cara = Radio * cos(22.5°) * 2 ≈ 7.768m / 2 = 3.884m por lado
+            this.OCT_FACE_DIST = this.OCT_RADIUS * Math.cos(Math.PI / 8) * 2; // ~7.768m
+
+            this.matRoad = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+            this.matGrass = new THREE.MeshStandardMaterial({ color: 0x1a472a, roughness: 1 });
+            this.matLines = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            this.matSel = new THREE.MeshStandardMaterial({ color: 0x3b82f6, emissive: 0x1e3a8a, emissiveIntensity: 0.5 });
+            
+            // Materiales para módulo octagonal
+            this.matOctWall = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.7, metalness: 0.1 });
+            this.matOctCap = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+            this.matOctVertex = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+            this.matOctHighlight = new THREE.MeshBasicMaterial({ color: 0x0078d4, wireframe: true, transparent: true, opacity: 0.3 });
+            
+            // Texturas para etiquetas numéricas del octágono
+            this.octTextures = this.createNumberTextures();
+
+            this.objects = [];
+            this.selected = null;
+            this.isDragging = false;
+            this.raycaster = new THREE.Raycaster();
+            this.mouse = new THREE.Vector2();
+            this.dragOffset = new THREE.Vector3();
+
+            window.addEventListener('resize', () => this.onResize());
+            this.renderer.domElement.addEventListener('mousedown', (e) => this.onDown(e));
+            this.renderer.domElement.addEventListener('mousemove', (e) => this.onMove(e));
+            window.addEventListener('mouseup', () => this.onUp());
+            
+            document.getElementById('rngLen').addEventListener('input', (e) => this.setLength(e.target.value));
+            document.getElementById('rngRad').addEventListener('input', (e) => this.setRadius(e.target.value));
+            document.getElementById('rngRot').addEventListener('input', (e) => this.setRotation(e.target.value));
+            document.getElementById('rngDiam').addEventListener('input', (e) => this.setDiameter(e.target.value));
+
+            // Controles de teclado
+            window.addEventListener('keydown', (e) => this.onKeyDown(e));
+
+            this.animate();
+        }
+
+        // --- TEXTURAS NUMÉRICAS PARA OCTÁGONO ---
+        createNumberTextures() {
+            return Array.from({length: 8}, (_, i) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 128; canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#111'; ctx.fillRect(0,0,128,128);
+                ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 90px Arial';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText((i + 1).toString(), 64, 64);
+                return new THREE.CanvasTexture(canvas);
+            });
+        }
+
+        // --- MÓDULO OCTAGONAL 50m² ---
+        addOctagon() {
+            const oct = this.createOctagonObj(this.OCT_AREA, this.OCT_HEIGHT); // 50m², 3m altura
+            oct.position.set(Math.random()*20 - 10, this.OCT_HEIGHT/2, Math.random()*20 - 10);
+            this.scene.add(oct); this.objects.push(oct); this.select(oct);
+        }
+
+        // === MOSTRAR BASE 140×100m ===
+        showBaseArea() {
+            // Eliminar base anterior si existe
+            const oldBase = this.scene.getObjectByName('baseArea');
+            if(oldBase) this.scene.remove(oldBase);
+
+            const baseGeo = new THREE.PlaneGeometry(this.BASE_REAL_X, this.BASE_REAL_Z);
+            const baseMat = new THREE.MeshBasicMaterial({ 
+                color: 0x0066ff, 
+                transparent: true, 
+                opacity: 0.15,
+                side: THREE.DoubleSide 
+            });
+            const base = new THREE.Mesh(baseGeo, baseMat);
+            base.rotation.x = -Math.PI / 2;
+            base.position.y = 0.01;
+            base.name = 'baseArea';
+            this.scene.add(base);
+
+            // Borde de la base
+            const borderGeo = new THREE.EdgesGeometry(baseGeo);
+            const borderMat = new THREE.LineBasicMaterial({ color: 0x0088ff, linewidth: 2 });
+            const border = new THREE.LineSegments(borderGeo, borderMat);
+            border.rotation.x = -Math.PI / 2;
+            border.position.y = 0.02;
+            base.add(border);
+
+            // Etiquetas de dimensión
+            this.addDimensionLabel(0, 0.5, -this.BASE_REAL_Z/2 - 3, '140m (70cm)');
+            this.addDimensionLabel(-this.BASE_REAL_X/2 - 5, 0.5, 0, '100m (50cm)');
+        }
+
+        addDimensionLabel(x, y, z, text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0088ff'; ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(text, 128, 32);
+            const tex = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: tex });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.position.set(x, y, z);
+            sprite.scale.set(20, 5, 1);
+            sprite.name = 'baseArea';
+            this.scene.add(sprite);
+        }
+
+        // === PIRÁMIDE DE OCTÁGONOS (6→2) ===
+        addPyramid() {
+            const pyramid = this.createPyramidObj([6, 5, 4, 3, 2]); // Niveles de octágonos
+            pyramid.position.set(0, 0, 0);
+            this.scene.add(pyramid); this.objects.push(pyramid); this.select(pyramid);
+        }
+
+        createPyramidObj(levels) {
+            const g = new THREE.Group();
+            g.userData = { type: 'pyramid', levels: levels };
+            
+            const V2V = this.OCT_RADIUS * 2; // Vértice a vértice
+            const C2C = this.OCT_FACE_DIST;   // Cara a cara (profundidad)
+            const h = this.OCT_HEIGHT;
+            
+            let yPos = h / 2;
+            levels.forEach((count, levelIdx) => {
+                const levelWidth = count * V2V;
+                const startX = -levelWidth / 2 + V2V / 2;
+                
+                for(let i = 0; i < count; i++) {
+                    const oct = this.createOctagonObj(this.OCT_AREA, h);
+                    oct.position.set(startX + i * V2V, yPos, 0);
+                    g.add(oct);
+                    // Remover de objects ya que es parte del grupo
+                    const idx = this.objects.indexOf(oct);
+                    if(idx > -1) this.objects.splice(idx, 1);
+                }
+                yPos += h; // Siguiente nivel
+            });
+            
+            return g;
+        }
+
+        // === GENERAR GRID 2×12 PIRÁMIDES ===
+        generatePyramidGrid() {
+            // Limpiar escena
+            this.objects.forEach(o => this.scene.remove(o));
+            this.objects = []; this.select(null);
+            
+            // Mostrar base
+            this.showBaseArea();
+            
+            // Dimensiones pirámide (en metros reales)
+            const V2V = this.OCT_RADIUS * 2; // ~8.408m
+            const pyramidWidth = 6 * V2V;     // ~50.45m frente
+            const pyramidDepth = this.OCT_FACE_DIST; // ~7.77m profundidad
+            
+            const cols = 2;  // 2 pirámides a lo ancho (140m)
+            const rows = 12; // 12 filas en profundidad (100m)
+            
+            const spacingX = this.BASE_REAL_X / cols; // ~70m entre centros
+            const spacingZ = this.BASE_REAL_Z / rows; // ~8.33m entre centros
+            
+            const startX = -this.BASE_REAL_X/2 + spacingX/2;
+            const startZ = -this.BASE_REAL_Z/2 + spacingZ/2;
+            
+            for(let row = 0; row < rows; row++) {
+                for(let col = 0; col < cols; col++) {
+                    const pyramid = this.createPyramidObj([6, 5, 4, 3, 2]);
+                    pyramid.position.set(
+                        startX + col * spacingX,
+                        0,
+                        startZ + row * spacingZ
+                    );
+                    this.scene.add(pyramid);
+                    this.objects.push(pyramid);
+                }
+            }
+            
+            // Ajustar cámara para ver todo  
+            this.camera.position.set(0, 120, 150);
+            this.camera.lookAt(0, 0, 0);
+        }
+
+        // === GENERAR CARRETERA PERIMETRAL ===
+        generatePerimeterRoad() {
+            // Dimensiones base: 140m x 100m
+            const W = this.BASE_REAL_X; // 140m (ancho)
+            const D = this.BASE_REAL_Z; // 100m (profundidad)
+            const roadWidth = 10; // ancho de carretera
+            const curveRadius = 25; // radio de las curvas (codos)
+            
+            // Longitudes de las rectas (descontando el espacio de las curvas)
+            const straightLengthX = W - 2 * curveRadius; // ~90m en X
+            const straightLengthZ = D - 2 * curveRadius; // ~50m en Z
+            
+            // Offset para que la carretera quede fuera del área base
+            const offset = roadWidth / 2 + 2; // Margen de 2m
+            const halfW = W / 2 + offset;
+            const halfD = D / 2 + offset;
+            
+            // === GLORIETA CENTRAL ===
+            const glorieta = this.createRoundaboutObj(30, roadWidth);
+            glorieta.position.set(0, 0, 0);
+            this.scene.add(glorieta); this.objects.push(glorieta);
+            
+            // === 4 RECTAS PERIMETRALES ===
+            // Recta Superior (Norte)
+            const roadN = this.createStraight(straightLengthX);
+            roadN.position.set(0, 0, -halfD + curveRadius);
+            roadN.rotation.y = Math.PI / 2; // Horizontal
+            this.scene.add(roadN); this.objects.push(roadN);
+            
+            // Recta Inferior (Sur)
+            const roadS = this.createStraight(straightLengthX);
+            roadS.position.set(0, 0, halfD - curveRadius);
+            roadS.rotation.y = Math.PI / 2; // Horizontal
+            this.scene.add(roadS); this.objects.push(roadS);
+            
+            // Recta Izquierda (Oeste)
+            const roadW = this.createStraight(straightLengthZ);
+            roadW.position.set(-halfW + curveRadius, 0, 0);
+            roadW.rotation.y = 0; // Vertical
+            this.scene.add(roadW); this.objects.push(roadW);
+            
+            // Recta Derecha (Este)
+            const roadE = this.createStraight(straightLengthZ);
+            roadE.position.set(halfW - curveRadius, 0, 0);
+            roadE.rotation.y = 0; // Vertical
+            this.scene.add(roadE); this.objects.push(roadE);
+            
+            // === 4 RECTAS CONECTANDO GLORIETA CON PERÍMETRO ===
+            const glorietaRadius = 30;
+            // Norte (conecta glorieta con recta Norte)
+            const connectN = this.createStraight(halfD - curveRadius - glorietaRadius);
+            connectN.position.set(0, 0, -(halfD - curveRadius + glorietaRadius) / 2);
+            connectN.rotation.y = 0;
+            this.scene.add(connectN); this.objects.push(connectN);
+            
+            // Sur (conecta glorieta con recta Sur)
+            const connectS = this.createStraight(halfD - curveRadius - glorietaRadius);
+            connectS.position.set(0, 0, (halfD - curveRadius + glorietaRadius) / 2);
+            connectS.rotation.y = 0;
+            this.scene.add(connectS); this.objects.push(connectS);
+            
+            // Oeste (conecta glorieta con recta Oeste)
+            const connectW = this.createStraight(halfW - curveRadius - glorietaRadius);
+            connectW.position.set(-(halfW - curveRadius + glorietaRadius) / 2, 0, 0);
+            connectW.rotation.y = Math.PI / 2;
+            this.scene.add(connectW); this.objects.push(connectW);
+            
+            // Este (conecta glorieta con recta Este)
+            const connectE = this.createStraight(halfW - curveRadius - glorietaRadius);
+            connectE.position.set((halfW - curveRadius + glorietaRadius) / 2, 0, 0);
+            connectE.rotation.y = Math.PI / 2;
+            this.scene.add(connectE); this.objects.push(connectE);
+            
+            // === 4 CODOS (esquinas) ===
+            // Esquina Noreste
+            const curveNE = this.createCurve(curveRadius, 90);
+            curveNE.position.set(halfW - curveRadius, 0, -halfD + curveRadius);
+            curveNE.rotation.y = 0;
+            this.scene.add(curveNE); this.objects.push(curveNE);
+            
+            // Esquina Noroeste
+            const curveNW = this.createCurve(curveRadius, 90);
+            curveNW.position.set(-halfW + curveRadius, 0, -halfD + curveRadius);
+            curveNW.rotation.y = Math.PI / 2;
+            this.scene.add(curveNW); this.objects.push(curveNW);
+            
+            // Esquina Suroeste
+            const curveSW = this.createCurve(curveRadius, 90);
+            curveSW.position.set(-halfW + curveRadius, 0, halfD - curveRadius);
+            curveSW.rotation.y = Math.PI;
+            this.scene.add(curveSW); this.objects.push(curveSW);
+            
+            // Esquina Sureste
+            const curveSE = this.createCurve(curveRadius, 90);
+            curveSE.position.set(halfW - curveRadius, 0, halfD - curveRadius);
+            curveSE.rotation.y = -Math.PI / 2;
+            this.scene.add(curveSE); this.objects.push(curveSE);
+            
+            // Mostrar base si no está visible
+            if(!this.scene.getObjectByName('baseArea')) {
+                this.showBaseArea();
+            }
+            
+            // === APLICAR SNAP AUTOMÁTICO ===
+            const roadPieces = [roadN, roadS, roadW, roadE, curveNE, curveNW, curveSW, curveSE, connectN, connectS, connectW, connectE];
+            this.autoSnapRoadPieces(roadPieces);
+        }
+        
+        autoSnapRoadPieces(pieces) {
+            // Aplicar snap a cada pieza contra el resto
+            const SNAP_DIST = 25;
+            for(let i = 0; i < pieces.length; i++) {
+                for(let j = i + 1; j < pieces.length; j++) {
+                    const p1 = pieces[i];
+                    const p2 = pieces[j];
+                    const cons1 = this.getConnectors(p1);
+                    const cons2 = this.getConnectors(p2);
+                    
+                    for(let c1 of cons1) {
+                        for(let c2 of cons2) {
+                            if(c1.pos.distanceTo(c2.pos) < SNAP_DIST) {
+                                // Conectar p1 a p2
+                                const offset = new THREE.Vector3().subVectors(c1.pos, p1.position);
+                                p1.position.subVectors(c2.pos, offset);
+                                
+                                // Alinear rotación
+                                const targetAngle = Math.atan2(c2.dir.x, c2.dir.z) + Math.PI;
+                                const currentAngle = Math.atan2(c1.dir.x, c1.dir.z);
+                                let delta = targetAngle - currentAngle;
+                                p1.rotation.y += delta;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        createOctagonObj(area, height) {
+            const g = new THREE.Group();
+            // Radio desde área: Area = 2 * sqrt(2) * R²
+            const radius = Math.sqrt(area / (2 * Math.sqrt(2)));
+            g.userData = { type: 'octagon', area: area, radius: radius, height: height };
+            this.buildOctagon(g);
+            return g;
+        }
+
+        buildOctagon(g) {
+            g.children.forEach(c => { if(c.geometry) c.geometry.dispose(); });
+            g.remove(...g.children);
+            const { radius, height } = g.userData;
+            const SEGMENTS = 8;
+
+            // 1. Paredes (cilindro octagonal)
+            const wallGeo = new THREE.CylinderGeometry(radius, radius, height, SEGMENTS);
+            const mat = this.selected === g ? this.matSel : this.matOctWall;
+            const walls = new THREE.Mesh(wallGeo, mat);
+            walls.castShadow = true; walls.receiveShadow = true;
+            g.add(walls);
+
+            // 2. Vértices (esferas amarillas)
+            const vertexGeo = new THREE.SphereGeometry(0.25, 8, 8);
+            for (let j = 0; j < 2; j++) {
+                const yPos = j === 0 ? -height/2 : height/2;
+                for (let i = 0; i < SEGMENTS; i++) {
+                    const angle = i * (Math.PI * 2 / SEGMENTS);
+                    const v = new THREE.Mesh(vertexGeo, this.matOctVertex);
+                    v.position.set(Math.cos(angle) * radius, yPos, Math.sin(angle) * radius);
+                    g.add(v);
+                }
+            }
+
+            // 3. Etiquetas numéricas en caras
+            const labelGeo = new THREE.PlaneGeometry(1.2, 1.2);
+            for (let i = 0; i < SEGMENTS; i++) {
+                const angle = (i + 0.5) * (Math.PI * 2 / SEGMENTS);
+                const lx = Math.cos(angle) * (radius + 0.05);
+                const lz = Math.sin(angle) * (radius + 0.05);
+                const label = new THREE.Mesh(labelGeo, new THREE.MeshBasicMaterial({ map: this.octTextures[i], transparent: true }));
+                label.position.set(lx, 0, lz);
+                label.lookAt(lx * 2, 0, lz * 2);
+                g.add(label);
+            }
+
+            // 4. Tapas (base y techo)
+            const capGeo = new THREE.CylinderGeometry(radius, radius, 0.1, SEGMENTS);
+            const topCap = new THREE.Mesh(capGeo, this.matOctCap); topCap.position.y = height/2; g.add(topCap);
+            const btmCap = new THREE.Mesh(capGeo, this.matOctCap); btmCap.position.y = -height/2; g.add(btmCap);
+
+            // 5. Highlight para selección
+            const highlight = new THREE.Mesh(
+                new THREE.CylinderGeometry(radius * 1.05, radius * 1.05, height, SEGMENTS),
+                this.matOctHighlight
+            );
+            highlight.visible = false;
+            highlight.name = 'highlight';
+            g.add(highlight);
+        }
+
+        // --- OPCIÓN 2: DISTRIBUIDOR RADIAL ---
+        addRadialHub() {
+            // 1. Limpiar o no? Mejor crear en centro.
+            // Si el usuario quiere borrar todo, puede usar Master Shape o borrar manual.
+            // Crearemos el hub en (0,0,0)
+            
+            // Crear Rotonda Base
+            const hub = this.createRoundaboutObj(155, 10);
+            hub.position.set(0,0,0);
+            this.scene.add(hub); this.objects.push(hub);
+
+            // Obtener conectores de la rotonda
+            const connectors = this.getConnectors(hub);
+
+            // Crear 8 rectas conectadas
+            connectors.forEach((conn, index) => {
+                const len = 150; // Longitud de los brazos
+                const road = this.createStraight(len);
+                
+                // Posicionar para conectar
+                // El conector de la rotonda es un punto y una dirección (hacia afuera).
+                // El conector de la carretera recta tiene Frente (-Z) y Atrás (+Z).
+                // Queremos que el "Atrás" de la recta conecte con la rotonda, y el "Frente" apunte afuera.
+                // O viceversa.
+                // Connector 'Straight' tiene dir (0,0,1) en Atrás.
+                // Queremos alinear (Road Back) con (Hub Port).
+                // Road Back Pos = (0,0,h). Road Back Dir = (0,0,1).
+                // Target Pos = conn.pos. Target Dir = conn.dir.
+                // Alinear: Road.pos = Target Pos - (LocalBackPos rotado).
+                // Road.rot = Atan2(TargetDir) ...?
+                // Simplemente: La recta debe rotarse igual que el angulo del conector de la rotonda.
+                // Angulo del conector rotonda: index * 45 deg.
+                
+                const angle = (index * 45) * (Math.PI/180);
+                road.rotation.y = angle;
+                
+                // Calcular posición
+                // El centro de la recta debe estar desplazado del centro de la rotonda
+                // Distancia = Radio Rotonda + (Longitud Recta / 2)
+                const dist = 155 + (len / 2); // 155 es radio eje rotonda.
+                // Nota: Queremos conectar el borde.
+                // getConnectors devuelve la posición en el radio R (155).
+                // Si alineamos road, su centro estará a R + L/2.
+                
+                road.position.set(
+                    Math.cos(angle) * dist,
+                    0,
+                    Math.sin(angle) * dist
+                );
+
+                this.scene.add(road);
+                this.objects.push(road);
+            });
+            
+            this.select(hub);
+        }
+
+        // --- FUNCIONES CORE ---
+
+        addRoundabout() {
+            const g = this.createRoundaboutObj(155, 10);
+            g.position.set(0, 0, 0);
+            this.scene.add(g); this.objects.push(g); this.select(g);
+        }
+
+        // =====================================================
+        // GLORIETA PARAMÉTRICA
+        // =====================================================
+        // Descripción: Glorieta con diámetro ajustable (10-100m)
+        // Ancho fijo de carretera: 10 metros
+        // 
+        // Para inicializar: editor.addParametricRoundabout()
+        // Para modificar diámetro: seleccionar y usar slider
+        // O programáticamente: editor.setDiameter(nuevoDiametro)
+        // =====================================================
+        
+        /**
+         * Añade una glorieta paramétrica a la escena
+         * @param {number} diametro - Diámetro inicial (10-100m), default 50m
+         */
+        addParametricRoundabout(diametro = 50) {
+            // Constantes de la glorieta paramétrica
+            const ANCHO_GLORIETA = 10; // Ancho fijo de 10 metros
+            const DIAMETRO_MIN = 10;
+            const DIAMETRO_MAX = 100;
+            
+            // Validar diámetro dentro del rango
+            diametro = Math.max(DIAMETRO_MIN, Math.min(DIAMETRO_MAX, diametro));
+            
+            const g = this.createParametricRoundaboutObj(diametro, ANCHO_GLORIETA);
+            g.position.set(0, 0, 0);
+            this.scene.add(g);
+            this.objects.push(g);
+            this.select(g);
+            return g;
+        }
+
+        /**
+         * Crea el objeto de glorieta paramétrica
+         * @param {number} diametro - Diámetro de la glorieta en metros
+         * @param {number} ancho - Ancho de la carretera (fijo: 10m)
+         */
+        createParametricRoundaboutObj(diametro, ancho) {
+            const g = new THREE.Group();
+            // Almacenar parámetros en userData para edición posterior
+            g.userData = { 
+                type: 'parametricRoundabout', 
+                diametro: diametro,      // Diámetro total
+                ancho: ancho,            // Ancho de carretera (fijo: 10m)
+                diametroMin: 10,
+                diametroMax: 100
+            };
+            this.buildParametricRoundabout(g);
+            return g;
+        }
+
+        /**
+         * Construye/reconstruye la geometría de la glorieta
+         * @param {THREE.Group} g - Grupo de la glorieta
+         */
+        buildParametricRoundabout(g) {
+            // Limpiar geometrías anteriores
+            g.children.forEach(c => { if(c.geometry) c.geometry.dispose(); });
+            g.remove(...g.children);
+            
+            const { diametro, ancho } = g.userData;
+            
+            // Calcular radios
+            // Radio exterior = diámetro / 2
+            // Radio interior = radio exterior - ancho
+            const radioExterior = diametro / 2;
+            const radioInterior = Math.max(0, radioExterior - ancho);
+            const radioEje = (radioExterior + radioInterior) / 2; // Radio del eje central
+            
+            // 1. Isla central (área verde)
+            if(radioInterior > 0) {
+                const islaGeo = new THREE.CircleGeometry(radioInterior, 64);
+                const isla = new THREE.Mesh(islaGeo, this.matGrass);
+                isla.rotation.x = -Math.PI / 2;
+                isla.position.y = 0.02;
+                isla.name = 'isla';
+                g.add(isla);
+            }
+            
+            // 2. Carretera (anillo)
+            const carGeo = new THREE.RingGeometry(radioInterior, radioExterior, 64);
+            const mat = this.selected === g ? this.matSel : this.matRoad;
+            const carretera = new THREE.Mesh(carGeo, mat);
+            carretera.rotation.x = -Math.PI / 2;
+            carretera.receiveShadow = true;
+            carretera.name = 'carretera';
+            g.add(carretera);
+            
+            // 3. Línea central (eje)
+            const lineaGeo = new THREE.RingGeometry(radioEje - 0.2, radioEje + 0.2, 64);
+            const linea = new THREE.Mesh(lineaGeo, this.matLines);
+            linea.rotation.x = -Math.PI / 2;
+            linea.position.y = 0.05;
+            linea.name = 'lineaCentral';
+            g.add(linea);
+            
+            // 4. Líneas de borde (interior y exterior)
+            if(radioInterior > 0.5) {
+                const bordeIntGeo = new THREE.RingGeometry(radioInterior - 0.15, radioInterior + 0.15, 64);
+                const bordeInt = new THREE.Mesh(bordeIntGeo, this.matLines);
+                bordeInt.rotation.x = -Math.PI / 2;
+                bordeInt.position.y = 0.04;
+                bordeInt.name = 'bordeInterior';
+                g.add(bordeInt);
+            }
+            
+            const bordeExtGeo = new THREE.RingGeometry(radioExterior - 0.15, radioExterior + 0.15, 64);
+            const bordeExt = new THREE.Mesh(bordeExtGeo, this.matLines);
+            bordeExt.rotation.x = -Math.PI / 2;
+            bordeExt.position.y = 0.04;
+            bordeExt.name = 'bordeExterior';
+            g.add(bordeExt);
+            
+            // 5. Etiqueta informativa (sprite)
+            this.addRoundaboutLabel(g, diametro, ancho);
+        }
+        
+        /**
+         * Añade etiqueta informativa a la glorieta
+         */
+        addRoundaboutLabel(g, diametro, ancho) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#22c55e';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`⌀${diametro}m | Ancho:${ancho}m`, 128, 32);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: tex });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.position.set(0, 5, 0);
+            sprite.scale.set(15, 4, 1);
+            sprite.name = 'etiqueta';
+            g.add(sprite);
+        }
+        
+        /**
+         * Actualiza el diámetro de la glorieta seleccionada
+         * @param {number} nuevoDiametro - Nuevo diámetro (10-100m)
+         */
+        setDiameter(nuevoDiametro) {
+            if(!this.selected || this.selected.userData.type !== 'parametricRoundabout') return;
+            
+            const { diametroMin, diametroMax } = this.selected.userData;
+            nuevoDiametro = Math.max(diametroMin, Math.min(diametroMax, parseFloat(nuevoDiametro)));
+            
+            this.selected.userData.diametro = nuevoDiametro;
+            document.getElementById('lblDiam').innerText = nuevoDiametro + 'm';
+            this.buildParametricRoundabout(this.selected);
+        }
+
+        createRoundaboutObj(radius, width) {
+            const g = new THREE.Group();
+            g.userData = { type: 'roundabout', radius: radius, width: width }; 
+            this.buildRoundabout(g);
+            return g;
+        }
+
+        buildRoundabout(g) {
+            g.children.forEach(c => { if(c.geometry) c.geometry.dispose(); });
+            g.remove(...g.children);
+            const { radius, width } = g.userData; 
+            const islandRadius = radius - (width/2);
+
+            // Isla
+            const grassGeo = new THREE.CircleGeometry(islandRadius, 64);
+            const grass = new THREE.Mesh(grassGeo, this.matGrass);
+            grass.rotation.x = -Math.PI/2; grass.position.y = 0.02;
+            g.add(grass);
+
+            // Vía
+            const roadGeo = new THREE.RingGeometry(radius - width/2, radius + width/2, 64);
+            const mat = this.selected === g ? this.matSel : this.matRoad;
+            const road = new THREE.Mesh(roadGeo, mat);
+            road.rotation.x = -Math.PI/2; road.receiveShadow = true;
+            g.add(road);
+
+            // Línea
+            const lGeo = new THREE.RingGeometry(radius - 0.2, radius + 0.2, 64);
+            const line = new THREE.Mesh(lGeo, this.matLines);
+            line.rotation.x = -Math.PI/2; line.position.y = 0.05;
+            g.add(line);
+        }
+
+        generateMasterShape() {
+            this.objects.forEach(o => this.scene.remove(o));
+            this.objects = []; this.select(null);
+
+            const R = 150; const TotalL = 500; const StraightL = TotalL - (R * 2);
+            const lS = this.createStraight(StraightL); lS.position.set(-R, 0, 0);
+            this.scene.add(lS); this.objects.push(lS);
+            const rS = this.createStraight(StraightL); rS.position.set(R, 0, 0);
+            this.scene.add(rS); this.objects.push(rS);
+            const halfS = StraightL / 2;
+            const topCenter = new THREE.Vector3(0, 0, -halfS);
+            this.placeCurve(topCenter, 150, 225); this.placeCurve(topCenter, 150, 315);
+            const botCenter = new THREE.Vector3(0, 0, halfS);
+            this.placeCurve(botCenter, 150, 45); this.placeCurve(botCenter, 150, 135);
+            this.camera.position.set(0, 700, 0); this.camera.lookAt(0,0,0);
+        }
+
+        placeCurve(pos, rad, rotDeg) {
+            const c = this.createCurve(rad, 90); c.position.copy(pos);
+            c.rotation.y = rotDeg * (Math.PI/180); this.scene.add(c); this.objects.push(c);
+        }
+
+        addStraight() {
+            const s = this.createStraight(100); s.position.set(Math.random()*50, 0, Math.random()*50);
+            this.scene.add(s); this.objects.push(s); this.select(s);
+        }
+
+        addCurve() {
+            const c = this.createCurve(50, 90); c.position.set(Math.random()*50, 0, Math.random()*50);
+            this.scene.add(c); this.objects.push(c); this.select(c);
+        }
+
+        createStraight(len) {
+            const g = new THREE.Group(); g.userData = { type: 'straight', length: parseFloat(len), width: 10 };
+            this.buildStraight(g); return g;
+        }
+
+        createCurve(rad, angle) {
+            const g = new THREE.Group(); g.userData = { type: 'curve', radius: parseFloat(rad), angle: angle, width: 10 };
+            this.buildCurve(g); return g;
+        }
+
+        buildStraight(g) {
+            g.children.forEach(c => c.geometry.dispose()); g.remove(...g.children);
+            const { length, width } = g.userData;
+            const geo = new THREE.PlaneGeometry(width, length);
+            const mat = this.selected === g ? this.matSel : this.matRoad;
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = -Math.PI/2; mesh.receiveShadow = true;
+            g.add(mesh);
+            const cnt = Math.floor(length/10);
+            const lGeo = new THREE.PlaneGeometry(0.8, 4);
+            const lines = new THREE.InstancedMesh(lGeo, this.matLines, cnt);
+            lines.rotation.x = -Math.PI/2; lines.position.y = 0.05;
+            const dummy = new THREE.Object3D();
+            for(let i=0; i<cnt; i++) { dummy.position.set(0, (i - cnt/2 + 0.5)*10, 0); dummy.updateMatrix(); lines.setMatrixAt(i, dummy.matrix); }
+            lines.instanceMatrix.needsUpdate = true; g.add(lines);
+        }
+
+        buildCurve(g) {
+            g.children.forEach(c => { if(c.geometry) c.geometry.dispose(); }); g.remove(...g.children);
+            const { radius, width, angle } = g.userData; const theta = angle * (Math.PI/180);
+            const shape = new THREE.RingGeometry(radius - width/2, radius + width/2, 64, 1, -theta/2, theta);
+            const mat = this.selected === g ? this.matSel : this.matRoad;
+            const mesh = new THREE.Mesh(shape, mat);
+            mesh.rotation.x = -Math.PI/2; mesh.receiveShadow = true; g.add(mesh);
+            const lShape = new THREE.RingGeometry(radius - 0.2, radius + 0.2, 64, 1, -theta/2, theta);
+            const line = new THREE.Mesh(lShape, this.matLines);
+            line.rotation.x = -Math.PI/2; line.position.y = 0.05; g.add(line);
+        }
+
+        select(obj) {
+            if(this.selected && this.selected !== obj) this.updateMat(this.selected, this.matRoad);
+            this.selected = obj;
+            const panel = document.getElementById('propPanel');
+            const cStraight = document.getElementById('controls-straight');
+            const cCurve = document.getElementById('controls-curve');
+
+            if(obj) {
+                this.updateMat(obj, this.matSel);
+                panel.style.display = 'block';
+                document.getElementById('rngRot').value = (Math.round(obj.rotation.y * 180/Math.PI)+360)%360;
+                document.getElementById('lblRot').innerText = Math.round(obj.rotation.y * 180/Math.PI) + '°';
+
+                if(obj.userData.type === 'straight') {
+                    cStraight.style.display = 'block'; cCurve.style.display = 'none';
+                    document.getElementById('rngLen').value = obj.userData.length;
+                    document.getElementById('lblLen').innerText = Math.round(obj.userData.length)+'m';
+                } else if(obj.userData.type === 'octagon') {
+                    // Octágono: mostrar área en lugar de longitud
+                    cStraight.style.display = 'block'; cCurve.style.display = 'none';
+                    document.getElementById('rngLen').value = obj.userData.area;
+                    document.getElementById('lblLen').innerText = Math.round(obj.userData.area)+'m²';
+                } else if(obj.userData.type === 'pyramid') {
+                    // Pirámide: mostrar niveles
+                    cStraight.style.display = 'block'; cCurve.style.display = 'none';
+                    const totalOcts = obj.userData.levels.reduce((a,b) => a+b, 0);
+                    document.getElementById('lblLen').innerText = totalOcts + ' octágonos';
+                } else if(obj.userData.type === 'parametricRoundabout') {
+                    // Glorieta Paramétrica: mostrar control de diámetro
+                    cStraight.style.display = 'none'; 
+                    cCurve.style.display = 'none';
+                    document.getElementById('controls-roundabout').style.display = 'block';
+                    document.getElementById('rngDiam').value = obj.userData.diametro;
+                    document.getElementById('lblDiam').innerText = Math.round(obj.userData.diametro)+'m';
+                } else {
+                    cStraight.style.display = 'none'; cCurve.style.display = 'block';
+                    document.getElementById('controls-roundabout').style.display = 'none';
+                    document.getElementById('rngRad').value = obj.userData.radius;
+                    document.getElementById('lblRad').innerText = Math.round(obj.userData.radius)+'m';
+                }
+            } else { panel.style.display = 'none'; document.getElementById('controls-roundabout').style.display = 'none'; }
+        }
+
+        updateMat(obj, mat) {
+            if(obj.userData.type === 'parametricRoundabout') {
+                // Glorieta paramétrica: actualizar carretera (child con nombre 'carretera')
+                const carretera = obj.getObjectByName('carretera');
+                if(carretera) carretera.material = mat;
+            } else if(obj.userData.type === 'roundabout') {
+                // Child 0 is Grass, Child 1 is Road
+                if(obj.children[1]) obj.children[1].material = mat; 
+            } else if(obj.userData.type === 'octagon') {
+                // Child 0 is walls, también mostrar/ocultar highlight
+                if(obj.children[0]) obj.children[0].material = mat === this.matSel ? this.matSel : this.matOctWall;
+                const hl = obj.getObjectByName('highlight');
+                if(hl) hl.visible = (mat === this.matSel);
+            } else if(obj.userData.type === 'pyramid') {
+                // Pirámide: actualizar todos los octágonos hijos
+                obj.traverse(child => {
+                    if(child.userData && child.userData.type === 'octagon') {
+                        if(child.children[0]) child.children[0].material = mat === this.matSel ? this.matSel : this.matOctWall;
+                        const hl = child.getObjectByName('highlight');
+                        if(hl) hl.visible = (mat === this.matSel);
+                    }
+                });
+            } else {
+                if(obj.children[0]) obj.children[0].material = mat;
+            }
+        }
+
+        setLength(val) {
+            if(this.selected && this.selected.userData.type === 'straight') {
+                this.selected.userData.length = parseFloat(val);
+                document.getElementById('lblLen').innerText = val+'m'; this.buildStraight(this.selected);
+            } else if(this.selected && this.selected.userData.type === 'octagon') {
+                // Para octágono, val es el área
+                const area = parseFloat(val);
+                this.selected.userData.area = area;
+                this.selected.userData.radius = Math.sqrt(area / (2 * Math.sqrt(2)));
+                document.getElementById('lblLen').innerText = val+'m²'; this.buildOctagon(this.selected);
+            }
+        }
+        setRadius(val) {
+            if(this.selected) {
+                this.selected.userData.radius = parseFloat(val);
+                document.getElementById('lblRad').innerText = val+'m';
+                if(this.selected.userData.type === 'roundabout') this.buildRoundabout(this.selected);
+                else this.buildCurve(this.selected);
+            }
+        }
+        setRotation(val) {
+            if(this.selected) {
+                this.selected.rotation.y = val * Math.PI/180;
+                document.getElementById('lblRot').innerText = val+'°';
+            }
+        }
+        deleteSelected() {
+            if(this.selected) {
+                this.scene.remove(this.selected);
+                this.objects = this.objects.filter(o => o !== this.selected);
+                this.select(null);
+            }
+        }
+
+        getConnectors(obj) {
+            const arr = []; obj.updateMatrixWorld(); const pos = obj.position; const rot = obj.rotation.y;
+            if(obj.userData.type === 'straight') {
+                const h = obj.userData.length / 2;
+                arr.push({ pos: new THREE.Vector3(0,0,-h).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos), dir: new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize() });
+                arr.push({ pos: new THREE.Vector3(0,0,h).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos), dir: new THREE.Vector3(0,0,1).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize() });
+            } else if (obj.userData.type === 'curve') {
+                const R = obj.userData.radius; const halfA = (obj.userData.angle * Math.PI/180) / 2;
+                const x1 = R * Math.cos(-halfA); const z1 = -R * Math.sin(-halfA);
+                const t1x = Math.sin(-halfA); const t1z = Math.cos(-halfA);
+                const p1 = new THREE.Vector3(x1, 0, z1).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos);
+                const d1 = new THREE.Vector3(t1x, 0, t1z).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize();
+                arr.push({ pos: p1, dir: d1 });
+                const x2 = R * Math.cos(halfA); const z2 = -R * Math.sin(halfA);
+                const t2x = -Math.sin(halfA); const t2z = -Math.cos(halfA);
+                const p2 = new THREE.Vector3(x2, 0, z2).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos);
+                const d2 = new THREE.Vector3(t2x, 0, t2z).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize();
+                arr.push({ pos: p2, dir: d2 });
+            } else if (obj.userData.type === 'roundabout') {
+                const R = obj.userData.radius;
+                for(let i=0; i<8; i++) {
+                    const angle = (i * 45) * (Math.PI/180);
+                    const lx = Math.cos(angle) * R; const lz = Math.sin(angle) * R;
+                    const dx = Math.cos(angle); const dz = Math.sin(angle);
+                    const p = new THREE.Vector3(lx, 0, lz).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos);
+                    const d = new THREE.Vector3(dx, 0, dz).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize();
+                    arr.push({ pos: p, dir: d });
+                }
+            } else if (obj.userData.type === 'octagon') {
+                // 8 conectores en los vértices del octágono
+                const R = obj.userData.radius;
+                for(let i=0; i<8; i++) {
+                    const angle = i * (Math.PI * 2 / 8);
+                    const lx = Math.cos(angle) * R; const lz = Math.sin(angle) * R;
+                    const dx = Math.cos(angle); const dz = Math.sin(angle);
+                    const p = new THREE.Vector3(lx, 0, lz).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos);
+                    const d = new THREE.Vector3(dx, 0, dz).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize();
+                    arr.push({ pos: p, dir: d });
+                }
+            }
+            return arr;
+        }
+
+        checkSnap() {
+            if(!this.selected || !this.isDragging) return;
+            const SNAP_DIST = 30; const myCons = this.getConnectors(this.selected); let snapped = false;
+            for(let other of this.objects) {
+                if(other === this.selected) continue;
+                const otherCons = this.getConnectors(other);
+                for(let myC of myCons) {
+                    for(let otC of otherCons) {
+                        if(myC.pos.distanceTo(otC.pos) < SNAP_DIST) {
+                            const offset = new THREE.Vector3().subVectors(myC.pos, this.selected.position);
+                            this.selected.position.subVectors(otC.pos, offset);
+                            const targetAngle = Math.atan2(otC.dir.x, otC.dir.z) + Math.PI;
+                            const currentAngle = Math.atan2(myC.dir.x, myC.dir.z);
+                            let delta = targetAngle - currentAngle;
+                            this.selected.rotation.y += delta;
+                            snapped = true; break;
+                        }
+                    }
+                    if(snapped) break;
+                }
+                if(snapped) break;
+            }
+            document.getElementById('snapMsg').style.opacity = snapped ? 1 : 0;
+        }
+
+        onDown(e) {
+            if(e.button !== 0) return;
+            this.mouse.x = (e.clientX/window.innerWidth)*2-1; this.mouse.y = -(e.clientY/window.innerHeight)*2+1;
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            const intersects = this.raycaster.intersectObjects(this.objects, true);
+            if(intersects.length > 0) {
+                let target = intersects[0].object; while(target.parent && target.parent.type !== 'Scene') target = target.parent;
+                this.select(target); this.isDragging = true; this.controls.enabled = false;
+                const p = new THREE.Vector3(); this.raycaster.ray.intersectPlane(this.plane, p);
+                this.dragOffset.subVectors(target.position, p);
+            } else { this.select(null); }
+        }
+        onMove(e) {
+            if(this.isDragging && this.selected) {
+                this.mouse.x = (e.clientX/window.innerWidth)*2-1; this.mouse.y = -(e.clientY/window.innerHeight)*2+1;
+                this.raycaster.setFromCamera(this.mouse, this.camera);
+                const p = new THREE.Vector3();
+                if(this.raycaster.ray.intersectPlane(this.plane, p)) {
+                    this.selected.position.addVectors(p, this.dragOffset); this.checkSnap();
+                }
+            }
+        }
+        onUp() { this.isDragging = false; this.controls.enabled = true; document.getElementById('snapMsg').style.opacity = 0; }
+        onResize() { this.camera.aspect = window.innerWidth/window.innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(window.innerWidth, window.innerHeight); }
+        
+        onKeyDown(e) {
+            if(!this.selected) return;
+            const MOVE_STEP = e.shiftKey ? 10 : 1; // Shift = movimiento rápido
+            const ROT_STEP = e.shiftKey ? 15 : 5;  // Grados de rotación
+            
+            switch(e.key) {
+                case 'ArrowUp': case 'w': case 'W':
+                    this.selected.position.z -= MOVE_STEP;
+                    e.preventDefault();
+                    break;
+                case 'ArrowDown': case 's': case 'S':
+                    this.selected.position.z += MOVE_STEP;
+                    e.preventDefault();
+                    break;
+                case 'ArrowLeft': case 'a': case 'A':
+                    this.selected.position.x -= MOVE_STEP;
+                    e.preventDefault();
+                    break;
+                case 'ArrowRight': case 'd': case 'D':
+                    this.selected.position.x += MOVE_STEP;
+                    e.preventDefault();
+                    break;
+                case 'q': case 'Q': // Rotar izquierda
+                    this.selected.rotation.y -= ROT_STEP * Math.PI / 180;
+                    this.updateRotationUI();
+                    e.preventDefault();
+                    break;
+                case 'e': case 'E': // Rotar derecha
+                    this.selected.rotation.y += ROT_STEP * Math.PI / 180;
+                    this.updateRotationUI();
+                    e.preventDefault();
+                    break;
+                case 'Delete': case 'Backspace':
+                    this.deleteSelected();
+                    e.preventDefault();
+                    break;
+                case 'Escape':
+                    this.select(null);
+                    e.preventDefault();
+                    break;
+            }
+        }
+        
+        updateRotationUI() {
+            if(this.selected) {
+                const deg = Math.round((this.selected.rotation.y * 180 / Math.PI + 360) % 360);
+                document.getElementById('rngRot').value = deg;
+                document.getElementById('lblRot').innerText = deg + '°';
+            }
+        }
+        
+        animate() { requestAnimationFrame(() => this.animate()); this.controls.update(); this.renderer.render(this.scene, this.camera); }
+
+        exportDXF() {
+            // === HEADER SECTION ===
+            let s = "0\nSECTION\n2\nHEADER\n";
+            s += "9\n$ACADVER\n1\nAC1015\n"; // AutoCAD 2000
+            s += "9\n$INSUNITS\n70\n6\n";    // Unidades: metros
+            s += "0\nENDSEC\n";
+            
+            // === TABLES SECTION (capas) ===
+            s += "0\nSECTION\n2\nTABLES\n";
+            s += "0\nTABLE\n2\nLAYER\n70\n10\n";
+            const layers = ['Road', 'RoadCenter', 'Roundabout', 'RoundaboutCenter', 'RoadCurve', 'RoadCurveCenter', 
+                           'COLUMNAS', 'BORDES', 'TECHOS', 'PISOS', 'Octagon', 'Pyramid', 'BaseArea'];
+            const colors = [7, 1, 3, 1, 4, 1, 2, 5, 6, 30, 140, 200, 8];
+            layers.forEach((name, i) => {
+                s += `0\nLAYER\n2\n${name}\n70\n0\n62\n${colors[i]}\n6\nCONTINUOUS\n`;
+            });
+            s += "0\nENDTAB\n0\nENDSEC\n";
+            
+            // === ENTITIES SECTION ===
+            s += "0\nSECTION\n2\nENTITIES\n";
+            
+            this.objects.forEach(o => {
+                const p = o.position, r = o.rotation.y;
+                
+                if(o.userData.type === 'straight') {
+                    const h = o.userData.length / 2;
+                    const w = o.userData.width / 2;
+                    const dirX = Math.sin(r), dirZ = Math.cos(r);
+                    const perpX = Math.cos(r), perpZ = -Math.sin(r);
+                    
+                    const corners = [
+                        { x: p.x - dirX*h - perpX*w, z: p.z - dirZ*h - perpZ*w },
+                        { x: p.x + dirX*h - perpX*w, z: p.z + dirZ*h - perpZ*w },
+                        { x: p.x + dirX*h + perpX*w, z: p.z + dirZ*h + perpZ*w },
+                        { x: p.x - dirX*h + perpX*w, z: p.z - dirZ*h + perpZ*w }
+                    ];
+                    
+                    for(let i = 0; i < 4; i++) {
+                        const c1 = corners[i], c2 = corners[(i + 1) % 4];
+                        s += `0\nLINE\n8\nRoad\n10\n${c1.x.toFixed(4)}\n20\n${c1.z.toFixed(4)}\n30\n0.0\n11\n${c2.x.toFixed(4)}\n21\n${c2.z.toFixed(4)}\n31\n0.0\n`;
+                    }
+                    
+                    const x1 = p.x - dirX*h, z1 = p.z - dirZ*h;
+                    const x2 = p.x + dirX*h, z2 = p.z + dirZ*h;
+                    s += `0\nLINE\n8\nRoadCenter\n10\n${x1.toFixed(4)}\n20\n${z1.toFixed(4)}\n30\n0.0\n11\n${x2.toFixed(4)}\n21\n${z2.toFixed(4)}\n31\n0.0\n`;
+                    
+                } else if(o.userData.type === 'roundabout') {
+                    const R = o.userData.radius;
+                    const w = o.userData.width / 2;
+                    s += `0\nCIRCLE\n8\nRoundabout\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(R - w).toFixed(4)}\n`;
+                    s += `0\nCIRCLE\n8\nRoundabout\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(R + w).toFixed(4)}\n`;
+                    s += `0\nCIRCLE\n8\nRoundaboutCenter\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${R.toFixed(4)}\n`;
+                    
+                } else if(o.userData.type === 'octagon') {
+                    const R = o.userData.radius;
+                    const h = o.userData.height / 2;
+                    const vB = [], vT = [];
+                    for(let i = 0; i < 8; i++) {
+                        const a = i * (Math.PI * 2 / 8) + r;
+                        const vx = Math.cos(a) * R;
+                        const vz = Math.sin(a) * R;
+                        vB.push({x: p.x + vx, y: p.y - h, z: p.z + vz});
+                        vT.push({x: p.x + vx, y: p.y + h, z: p.z + vz});
+                    }
+                    for(let i = 0; i < 8; i++) {
+                        const n = (i + 1) % 8;
+                        // Columnas verticales
+                        s += `0\nLINE\n8\nCOLUMNAS\n10\n${vB[i].x.toFixed(4)}\n20\n${vB[i].z.toFixed(4)}\n30\n${vB[i].y.toFixed(4)}\n11\n${vT[i].x.toFixed(4)}\n21\n${vT[i].z.toFixed(4)}\n31\n${vT[i].y.toFixed(4)}\n`;
+                        // Bordes base
+                        s += `0\nLINE\n8\nBORDES\n10\n${vB[i].x.toFixed(4)}\n20\n${vB[i].z.toFixed(4)}\n30\n${vB[i].y.toFixed(4)}\n11\n${vB[n].x.toFixed(4)}\n21\n${vB[n].z.toFixed(4)}\n31\n${vB[n].y.toFixed(4)}\n`;
+                        // Bordes techo
+                        s += `0\nLINE\n8\nBORDES\n10\n${vT[i].x.toFixed(4)}\n20\n${vT[i].z.toFixed(4)}\n30\n${vT[i].y.toFixed(4)}\n11\n${vT[n].x.toFixed(4)}\n21\n${vT[n].z.toFixed(4)}\n31\n${vT[n].y.toFixed(4)}\n`;
+                    }
+                    
+                } else if(o.userData.type === 'pyramid') {
+                    // Exportar pirámide: cada octágono en su posición
+                    const basePos = o.position;
+                    o.children.forEach(child => {
+                        if(child.userData && child.userData.type === 'octagon') {
+                            const cp = child.position;
+                            const R = child.userData.radius;
+                            const h = child.userData.height / 2;
+                            const worldX = basePos.x + cp.x;
+                            const worldY = basePos.y + cp.y;
+                            const worldZ = basePos.z + cp.z;
+                            
+                            const vB = [], vT = [];
+                            for(let i = 0; i < 8; i++) {
+                                const a = i * (Math.PI * 2 / 8) + r;
+                                const vx = Math.cos(a) * R;
+                                const vz = Math.sin(a) * R;
+                                vB.push({x: worldX + vx, y: worldY - h, z: worldZ + vz});
+                                vT.push({x: worldX + vx, y: worldY + h, z: worldZ + vz});
+                            }
+                            for(let i = 0; i < 8; i++) {
+                                const n = (i + 1) % 8;
+                                s += `0\nLINE\n8\nPyramid\n10\n${vB[i].x.toFixed(4)}\n20\n${vB[i].z.toFixed(4)}\n30\n${vB[i].y.toFixed(4)}\n11\n${vT[i].x.toFixed(4)}\n21\n${vT[i].z.toFixed(4)}\n31\n${vT[i].y.toFixed(4)}\n`;
+                                s += `0\nLINE\n8\nPyramid\n10\n${vB[i].x.toFixed(4)}\n20\n${vB[i].z.toFixed(4)}\n30\n${vB[i].y.toFixed(4)}\n11\n${vB[n].x.toFixed(4)}\n21\n${vB[n].z.toFixed(4)}\n31\n${vB[n].y.toFixed(4)}\n`;
+                                s += `0\nLINE\n8\nPyramid\n10\n${vT[i].x.toFixed(4)}\n20\n${vT[i].z.toFixed(4)}\n30\n${vT[i].y.toFixed(4)}\n11\n${vT[n].x.toFixed(4)}\n21\n${vT[n].z.toFixed(4)}\n31\n${vT[n].y.toFixed(4)}\n`;
+                            }
+                        }
+                    });
+                    
+                } else if(o.userData.type === 'curve') {
+                    const R = o.userData.radius;
+                    const w = o.userData.width / 2;
+                    const startDeg = ((r * 180/Math.PI) - (o.userData.angle/2) - 90);
+                    const endDeg = ((r * 180/Math.PI) + (o.userData.angle/2) - 90);
+                    s += `0\nARC\n8\nRoadCurve\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(R - w).toFixed(4)}\n50\n${startDeg.toFixed(4)}\n51\n${endDeg.toFixed(4)}\n`;
+                    s += `0\nARC\n8\nRoadCurve\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(R + w).toFixed(4)}\n50\n${startDeg.toFixed(4)}\n51\n${endDeg.toFixed(4)}\n`;
+                    s += `0\nARC\n8\nRoadCurveCenter\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${R.toFixed(4)}\n50\n${startDeg.toFixed(4)}\n51\n${endDeg.toFixed(4)}\n`;
+                    
+                } else if(o.userData.type === 'baseArea') {
+                    // Exportar el área base como rectángulo
+                    const w = o.userData.width / 2;
+                    const d = o.userData.depth / 2;
+                    const corners = [
+                        {x: p.x - w, z: p.z - d},
+                        {x: p.x + w, z: p.z - d},
+                        {x: p.x + w, z: p.z + d},
+                        {x: p.x - w, z: p.z + d}
+                    ];
+                    for(let i = 0; i < 4; i++) {
+                        const c1 = corners[i], c2 = corners[(i + 1) % 4];
+                        s += `0\nLINE\n8\nBaseArea\n10\n${c1.x.toFixed(4)}\n20\n${c1.z.toFixed(4)}\n30\n0.0\n11\n${c2.x.toFixed(4)}\n21\n${c2.z.toFixed(4)}\n31\n0.0\n`;
+                    }
+                }
+            });
+            
+            s += "0\nENDSEC\n0\nEOF\n";
+            const b = new Blob([s], {type: 'application/dxf'});
+            const l = document.createElement('a'); 
+            l.href = URL.createObjectURL(b); 
+            l.download = 'piramides_1_200.dxf'; 
+            l.click();
+        }
+    }
+
+    window.editor = new RoadEditor();
+</script>
+</body>
+</html>
