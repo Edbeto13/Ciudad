@@ -118,8 +118,9 @@
         <!-- Control Glorieta Paramétrica -->
         <div id="controls-roundabout" class="control-group" style="display:none;">
             <label>Diámetro <span id="lblDiam" class="val">50m</span></label>
-            <input type="range" id="rngDiam" min="10" max="100" step="1">
-            <div style="font-size:9px; color:#666; margin-top:4px;">Ancho fijo: 10m | Rango: 10-100m</div>
+            <input type="range" id="rngDiam" min="10" max="200" step="1">
+            <div id="lblArea" style="font-size:11px; color:#22c55e; margin-top:6px; font-weight:bold;">Área: -- m²</div>
+            <div style="font-size:9px; color:#666; margin-top:4px;">Ancho fijo: 10m | Rango: 10-200m</div>
         </div>
 
         <!-- Rotación Común -->
@@ -647,7 +648,7 @@
             // Constantes de la glorieta paramétrica
             const ANCHO_GLORIETA = 10; // Ancho fijo de 10 metros
             const DIAMETRO_MIN = 10;
-            const DIAMETRO_MAX = 100;
+            const DIAMETRO_MAX = 200; // Permite hasta ~31,416 m²
             
             // Validar diámetro dentro del rango
             diametro = Math.max(DIAMETRO_MIN, Math.min(DIAMETRO_MAX, diametro));
@@ -673,7 +674,7 @@
                 diametro: diametro,      // Diámetro total
                 ancho: ancho,            // Ancho de carretera (fijo: 10m)
                 diametroMin: 10,
-                diametroMax: 100
+                diametroMax: 200         // Permite hasta ~31,416 m²
             };
             this.buildParametricRoundabout(g);
             return g;
@@ -747,30 +748,46 @@
         
         /**
          * Añade etiqueta informativa a la glorieta
+         * Muestra: diámetro, área total y dimensiones en maqueta 1:300
          */
         addRoundaboutLabel(g, diametro, ancho) {
+            const radioExterior = diametro / 2;
+            const areaTotal = Math.PI * radioExterior * radioExterior; // A = πr²
+            const diametroMaqueta = (diametro / 3).toFixed(1); // Escala 1:300
+            
             const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 64;
+            canvas.width = 512;
+            canvas.height = 128;
             const ctx = canvas.getContext('2d');
+            
+            // Fondo semitransparente
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, 512, 128);
+            
+            // Línea 1: Diámetro y área
             ctx.fillStyle = '#22c55e';
-            ctx.font = 'bold 20px Arial';
+            ctx.font = 'bold 28px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(`⌀${diametro}m | Ancho:${ancho}m`, 128, 32);
+            ctx.fillText(`⌀${diametro}m | Área: ${areaTotal.toFixed(0)} m²`, 256, 40);
+            
+            // Línea 2: Maqueta
+            ctx.fillStyle = '#60a5fa';
+            ctx.font = '22px Arial';
+            ctx.fillText(`Maqueta 1:300: ⌀${diametroMaqueta}cm`, 256, 85);
             
             const tex = new THREE.CanvasTexture(canvas);
             const spriteMat = new THREE.SpriteMaterial({ map: tex });
             const sprite = new THREE.Sprite(spriteMat);
-            sprite.position.set(0, 5, 0);
-            sprite.scale.set(15, 4, 1);
+            sprite.position.set(0, 8, 0);
+            sprite.scale.set(25, 6, 1);
             sprite.name = 'etiqueta';
             g.add(sprite);
         }
         
         /**
          * Actualiza el diámetro de la glorieta seleccionada
-         * @param {number} nuevoDiametro - Nuevo diámetro (10-100m)
+         * @param {number} nuevoDiametro - Nuevo diámetro (10-200m)
          */
         setDiameter(nuevoDiametro) {
             if(!this.selected || this.selected.userData.type !== 'parametricRoundabout') return;
@@ -779,7 +796,15 @@
             nuevoDiametro = Math.max(diametroMin, Math.min(diametroMax, parseFloat(nuevoDiametro)));
             
             this.selected.userData.diametro = nuevoDiametro;
+            
+            // Calcular área: A = π * r²
+            const radio = nuevoDiametro / 2;
+            const area = Math.PI * radio * radio;
+            const diametroMaqueta = (nuevoDiametro / 3).toFixed(1); // Escala 1:300
+            
             document.getElementById('lblDiam').innerText = nuevoDiametro + 'm';
+            document.getElementById('lblArea').innerHTML = `Área: <strong>${area.toFixed(0)} m²</strong> | Maqueta: ⌀${diametroMaqueta}cm`;
+            
             this.buildParametricRoundabout(this.selected);
         }
 
@@ -915,12 +940,19 @@
                     const totalOcts = obj.userData.levels.reduce((a,b) => a+b, 0);
                     document.getElementById('lblLen').innerText = totalOcts + ' octágonos';
                 } else if(obj.userData.type === 'parametricRoundabout') {
-                    // Glorieta Paramétrica: mostrar control de diámetro
+                    // Glorieta Paramétrica: mostrar control de diámetro y área
                     cStraight.style.display = 'none'; 
                     cCurve.style.display = 'none';
                     document.getElementById('controls-roundabout').style.display = 'block';
-                    document.getElementById('rngDiam').value = obj.userData.diametro;
-                    document.getElementById('lblDiam').innerText = Math.round(obj.userData.diametro)+'m';
+                    
+                    const diametro = obj.userData.diametro;
+                    const radio = diametro / 2;
+                    const area = Math.PI * radio * radio;
+                    const diametroMaqueta = (diametro / 3).toFixed(1);
+                    
+                    document.getElementById('rngDiam').value = diametro;
+                    document.getElementById('lblDiam').innerText = Math.round(diametro)+'m';
+                    document.getElementById('lblArea').innerHTML = `Área: <strong>${area.toFixed(0)} m²</strong> | Maqueta: ⌀${diametroMaqueta}cm`;
                 } else {
                     cStraight.style.display = 'none'; cCurve.style.display = 'block';
                     document.getElementById('controls-roundabout').style.display = 'none';
