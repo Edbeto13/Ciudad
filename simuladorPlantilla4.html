@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador Pirámides Octagonales - Escala 1:200</title>
+    <title>Simulador Pirámides Octagonales - Escala 1:300</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; overflow: hidden; background: #151515; font-family: 'Segoe UI', sans-serif; user-select: none; }
@@ -65,10 +65,10 @@
 <body>
 
     <div class="panel toolbar">
-        <h2 class="text-xs font-bold text-blue-400 uppercase mb-4 border-b border-gray-700 pb-2 tracking-wider">Pirámides 1:200</h2>
+        <h2 class="text-xs font-bold text-blue-400 uppercase mb-4 border-b border-gray-700 pb-2 tracking-wider">Pirámides 1:300</h2>
         
         <button onclick="editor.showBaseArea()" class="btn-alt">
-            <span>▭</span> Mostrar Base 140×100m
+            <span>▭</span> Mostrar Base 210×150m
         </button>
         <button onclick="editor.addPyramid()" class="btn-special">
             <span>△</span> Añadir Pirámide (6→2)
@@ -93,10 +93,10 @@
         <button onclick="editor.exportDXF()">⬇ Exportar DXF</button>
 
         <div class="stats-box">
-            <strong>Escala 1:200</strong> | Base: 70×50cm<br>
-            • <strong>Carretera:</strong> 4 rectas + 4 codos (R=25m) + glorieta central<br>
-            • <strong>Octágono:</strong> 50m², V-V: 4.2cm, C-C: 3.88cm<br>
-            • <strong>Pirámide:</strong> 6→2 oct, 25.2×3.88cm
+            <strong>Escala 1:300</strong> | Base: 70×50cm<br>
+            • <strong>Carretera:</strong> 4 rectas + 4 codos (R=37.5m) + glorieta central<br>
+            • <strong>Octágono:</strong> 50m², V-V: 2.8cm, C-C: 2.59cm<br>
+            • <strong>Pirámide:</strong> 6→2 oct, 16.8×2.59cm
         </div>
     </div>
 
@@ -146,7 +146,7 @@
             this.scene.background = new THREE.Color(0x151515);
             
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 5000);
-            this.camera.position.set(0, 150, 180); // Vista más cercana para escala 1:200 
+            this.camera.position.set(0, 200, 250); // Vista ajustada para escala 1:300 
 
             this.renderer = new THREE.WebGLRenderer({ antialias: true });
             this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -169,14 +169,14 @@
             dir.shadow.camera.top = 2000; dir.shadow.camera.bottom = -2000;
             this.scene.add(dir);
 
-            const grid = new THREE.GridHelper(200, 20, 0x333333, 0x222222); // Grid 200m con 10m divisiones
+            const grid = new THREE.GridHelper(300, 30, 0x333333, 0x222222); // Grid 300m con 10m divisiones
             this.scene.add(grid);
             this.plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-            // === CONSTANTES ESCALA 1:200 ===
-            this.SCALE = 200; // 1:200
-            this.BASE_REAL_X = 140; // metros reales (70cm maqueta)
-            this.BASE_REAL_Z = 100; // metros reales (50cm maqueta)
+            // === CONSTANTES ESCALA 1:300 ===
+            this.SCALE = 300; // 1:300
+            this.BASE_REAL_X = 210; // metros reales (70cm maqueta)
+            this.BASE_REAL_Z = 150; // metros reales (50cm maqueta)
             this.OCT_AREA = 50;     // m² por octágono
             this.OCT_HEIGHT = 3;    // altura módulo (3m real)
             // Octágono 50m²: Radio = sqrt(50 / (2*sqrt(2))) ≈ 4.204m (V-V real)
@@ -269,9 +269,9 @@
             border.position.y = 0.02;
             base.add(border);
 
-            // Etiquetas de dimensión
-            this.addDimensionLabel(0, 0.5, -this.BASE_REAL_Z/2 - 3, '140m (70cm)');
-            this.addDimensionLabel(-this.BASE_REAL_X/2 - 5, 0.5, 0, '100m (50cm)');
+            // Etiquetas de dimensión (escala 1:300)
+            this.addDimensionLabel(0, 0.5, -this.BASE_REAL_Z/2 - 3, '210m (70cm)');
+            this.addDimensionLabel(-this.BASE_REAL_X/2 - 5, 0.5, 0, '150m (50cm)');
         }
 
         addDimensionLabel(x, y, z, text) {
