@@ -90,13 +90,40 @@
         <button onclick="editor.addParametricRoundabout()" class="btn-special">
             <span>◎</span> Glorieta Paramétrica
         </button>
+        <button onclick="editor.addRadialHub()" class="btn-alt">
+            <span>☀</span> Distribuidor Radial (8 brazos)
+        </button>
+        
+        <div class="h-px bg-gray-700 my-4"></div>
+        <div style="font-size:9px; color:#10b981; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">🚗 Vehículos</div>
+        <button onclick="editor.addCybertruck()" class="btn-special" style="background:#1a1a2e; border-color:#0f4c75;">
+            <span>🚐</span> Tesla Cybertruck
+        </button>
+        <div style="font-size:8px; color:#666; margin-top:-4px; margin-bottom:8px; padding-left:4px;">
+            WASD/Flechas: mover | Q/E: girar | Shift: turbo
+        </div>
+        
         <button onclick="editor.exportDXF()">⬇ Exportar DXF</button>
+        
+        <div class="h-px bg-gray-700 my-4"></div>
+        <div style="font-size:9px; color:#f59e0b; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">💾 Proyecto</div>
+        <button onclick="editor.saveScene()" class="btn-alt" style="background:#065f46; border-color:#059669;">
+            <span>💾</span> Guardar Escena
+        </button>
+        <button onclick="editor.loadSavedScene()" style="background:#1e3a5f; border-color:#3b82f6;">
+            <span>📂</span> Cargar Escena
+        </button>
+        <button onclick="editor.clearScene()" class="btn-danger" style="margin-top:4px;">
+            <span>🗑</span> Limpiar Todo
+        </button>
 
         <div class="stats-box">
             <strong>Escala 1:300</strong> | Base: 70×50cm<br>
             • <strong>Carretera:</strong> 4 rectas + 4 codos (R=37.5m) + glorieta central<br>
             • <strong>Octágono:</strong> 50m², V-V: 2.8cm, C-C: 2.59cm<br>
-            • <strong>Pirámide:</strong> 6→2 oct, 16.8×2.59cm
+            • <strong>Pirámide:</strong> 6→2 oct, 16.8×2.59cm<br>
+            • <strong>Cybertruck:</strong> 5.68×2.03m (19×6.8mm)<br>
+            • <strong>Radial:</strong> Glorieta R=50m + 8 brazos de 100m
         </div>
     </div>
 
@@ -185,6 +212,26 @@
             // Distancia cara a cara = Radio * cos(22.5°) * 2 ≈ 7.768m / 2 = 3.884m por lado
             this.OCT_FACE_DIST = this.OCT_RADIUS * Math.cos(Math.PI / 8) * 2; // ~7.768m
 
+            // === CONSTANTES CYBERTRUCK (metros reales) ===
+            this.CYBER = {
+                LENGTH: 5.683,    // Longitud total en metros
+                WIDTH: 2.032,     // Ancho sin espejos
+                HEIGHT: 1.791,    // Altura (suspensión media)
+                WHEELBASE: 3.635, // Distancia entre ejes
+                GROUND_CLEARANCE: 0.35, // Despeje al suelo
+                // Física de movimiento
+                MAX_SPEED: 50,       // Velocidad máxima m/s (~180 km/h)
+                ACCELERATION: 15,    // Aceleración m/s² (0-100 en ~6.6s)
+                BRAKE_FORCE: 25,     // Frenado m/s²
+                TURN_RATE: 2.5,      // Velocidad de giro rad/s
+                FRICTION: 0.97,      // Coeficiente de fricción
+                // Colores
+                COLOR_BODY: 0xc0c0c0,   // Acero inoxidable
+                COLOR_WINDOW: 0x1a1a2e, // Ventanas oscuras
+                COLOR_LIGHT: 0xffffff,  // Luces
+                COLOR_WHEEL: 0x222222   // Ruedas
+            };
+
             this.matRoad = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
             this.matGrass = new THREE.MeshStandardMaterial({ color: 0x1a472a, roughness: 1 });
             this.matLines = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -196,6 +243,43 @@
             this.matOctVertex = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
             this.matOctHighlight = new THREE.MeshBasicMaterial({ color: 0x0078d4, wireframe: true, transparent: true, opacity: 0.3 });
             
+            // Materiales para Cybertruck
+            this.matCyberBody = new THREE.MeshStandardMaterial({ 
+                color: this.CYBER.COLOR_BODY, 
+                roughness: 0.2, 
+                metalness: 0.9,
+                envMapIntensity: 1.0
+            });
+            this.matCyberWindow = new THREE.MeshStandardMaterial({ 
+                color: this.CYBER.COLOR_WINDOW, 
+                roughness: 0.1, 
+                metalness: 0.5,
+                transparent: true,
+                opacity: 0.8
+            });
+            this.matCyberWheel = new THREE.MeshStandardMaterial({ 
+                color: this.CYBER.COLOR_WHEEL, 
+                roughness: 0.6, 
+                metalness: 0.3
+            });
+            this.matCyberLight = new THREE.MeshBasicMaterial({ 
+                color: this.CYBER.COLOR_LIGHT
+            });
+            this.matCyberTailLight = new THREE.MeshBasicMaterial({ 
+                color: 0xff3333
+            });
+            
+            // Estado de vehículos activos
+            this.vehicles = [];
+            this.activeVehicle = null; // Vehículo actualmente controlado
+            this.vehicleKeys = {
+                forward: false,
+                backward: false,
+                left: false,
+                right: false,
+                turbo: false
+            };
+            
             // Texturas para etiquetas numéricas del octágono
             this.octTextures = this.createNumberTextures();
 
@@ -205,6 +289,17 @@
             this.raycaster = new THREE.Raycaster();
             this.mouse = new THREE.Vector2();
             this.dragOffset = new THREE.Vector3();
+            
+            // Sistema de resize handles (estilo Word)
+            this.resizeHandles = [];
+            this.isResizing = false;
+            this.activeHandle = null;
+            this.resizeStartPos = new THREE.Vector3();
+            this.resizeStartLength = 0;
+            
+            // Material para handles de resize
+            this.matHandle = new THREE.MeshBasicMaterial({ color: 0x00aaff });
+            this.matHandleHover = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
             window.addEventListener('resize', () => this.onResize());
             this.renderer.domElement.addEventListener('mousedown', (e) => this.onDown(e));
@@ -218,8 +313,330 @@
 
             // Controles de teclado
             window.addEventListener('keydown', (e) => this.onKeyDown(e));
+            window.addEventListener('keyup', (e) => this.onKeyUp(e));
+            
+            // Reloj para delta time (física)
+            this.clock = new THREE.Clock();
+
+            // Cargar escena predeterminada
+            this.loadDefaultScene();
 
             this.animate();
+        }
+
+        // === ESCENA PREDETERMINADA ===
+        // Basada en escena_ciudad_2025-12-28.json construida manualmente
+        loadDefaultScene() {
+            // Mostrar base
+            this.showBaseArea();
+            
+            // Glorieta central (radio 40m, ancho 10m)
+            const roundabout = this.createRoundaboutObj(40, 10);
+            roundabout.position.set(0, 0, 0);
+            this.scene.add(roundabout);
+            this.objects.push(roundabout);
+            
+            // Carretera vertical superior (180m) - horizontal en pantalla
+            const roadTop = this.createStraight(180);
+            roadTop.position.set(-0.33, 0, -69.84);
+            roadTop.rotation.y = Math.PI / 2;
+            this.scene.add(roadTop);
+            this.objects.push(roadTop);
+            
+            // Carretera vertical inferior (180m) - horizontal en pantalla
+            const roadBottom = this.createStraight(180);
+            roadBottom.position.set(-0.19, 0, 69.84);
+            roadBottom.rotation.y = Math.PI / 2;
+            this.scene.add(roadBottom);
+            this.objects.push(roadBottom);
+            
+            // Carretera horizontal izquierda (120m) - vertical en pantalla
+            const roadLeft = this.createStraight(120);
+            roadLeft.position.set(-100.33, 0, 0.16);
+            roadLeft.rotation.y = Math.PI;
+            this.scene.add(roadLeft);
+            this.objects.push(roadLeft);
+            
+            // Carretera horizontal derecha (120m) - vertical en pantalla
+            const roadRight = this.createStraight(120);
+            roadRight.position.set(99.67, 0, 0.16);
+            roadRight.rotation.y = Math.PI;
+            this.scene.add(roadRight);
+            this.objects.push(roadRight);
+            
+            // Brazo diagonal sureste (40m)
+            const armSE = this.createStraight(40);
+            armSE.position.set(45.96, 0, 45.96);
+            armSE.rotation.y = Math.PI / 4; // 45°
+            this.scene.add(armSE);
+            this.objects.push(armSE);
+            
+            // Brazo diagonal noreste (40m)
+            const armNE = this.createStraight(40);
+            armNE.position.set(45.96, 0, -45.96);
+            armNE.rotation.y = -Math.PI / 4; // -45°
+            this.scene.add(armNE);
+            this.objects.push(armNE);
+            
+            // Brazo diagonal noroeste (40m)
+            const armNW = this.createStraight(40);
+            armNW.position.set(-45.96, 0, -45.96);
+            armNW.rotation.y = Math.PI * 5 / 4; // 225°
+            this.scene.add(armNW);
+            this.objects.push(armNW);
+            
+            // Brazo diagonal suroeste (40m)
+            const armSW = this.createStraight(40);
+            armSW.position.set(-45.96, 0, 45.96);
+            armSW.rotation.y = Math.PI * 7 / 4; // 315°
+            this.scene.add(armSW);
+            this.objects.push(armSW);
+            
+            // Curva esquina noroeste
+            const curveNW = this.createCurve(10, 90);
+            curveNW.position.set(-90.33, 0, -59.84);
+            curveNW.rotation.y = Math.PI * 3 / 4; // 135°
+            this.scene.add(curveNW);
+            this.objects.push(curveNW);
+            
+            // Curva esquina noreste
+            const curveNE = this.createCurve(10, 90);
+            curveNE.position.set(89.67, 0, -59.84);
+            curveNE.rotation.y = Math.PI / 4; // 45°
+            this.scene.add(curveNE);
+            this.objects.push(curveNE);
+            
+            // Curva esquina suroeste
+            const curveSW = this.createCurve(10, 90);
+            curveSW.position.set(-90.19, 0, 59.84);
+            curveSW.rotation.y = -Math.PI * 3 / 4; // -135°
+            this.scene.add(curveSW);
+            this.objects.push(curveSW);
+            
+            // Curva esquina sureste
+            const curveSE = this.createCurve(10, 90);
+            curveSE.position.set(89.81, 0, 59.84);
+            curveSE.rotation.y = -Math.PI / 4; // -45°
+            this.scene.add(curveSE);
+            this.objects.push(curveSE);
+            
+            // Conexión glorieta-derecha (50m)
+            const connRight = this.createStraight(50);
+            connRight.position.set(70, 0, 0);
+            connRight.rotation.y = Math.PI / 2; // 90°
+            this.scene.add(connRight);
+            this.objects.push(connRight);
+            
+            // Conexión glorieta-izquierda (50m)
+            const connLeft = this.createStraight(50);
+            connLeft.position.set(-70, 0, 0);
+            connLeft.rotation.y = Math.PI / 2; // 90°
+            this.scene.add(connLeft);
+            this.objects.push(connLeft);
+            
+            // Ajustar cámara para ver toda la escena (vista cenital)
+            this.camera.position.set(8.39, 252.39, -0.40);
+            this.controls.target.set(8.39, 0, -0.40);
+        }
+        
+        // === GUARDAR / CARGAR ESCENA ===
+        saveScene() {
+            const sceneData = this.serializeScene();
+            localStorage.setItem('ciudadEla_scene', JSON.stringify(sceneData));
+            
+            // También ofrecer descarga como archivo
+            const blob = new Blob([JSON.stringify(sceneData, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'escena_ciudad_' + new Date().toISOString().slice(0,10) + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            alert('✅ Escena guardada!\n• En localStorage (se carga automáticamente)\n• Archivo JSON descargado');
+        }
+        
+        loadSavedScene() {
+            // Primero intentar cargar de localStorage
+            const saved = localStorage.getItem('ciudadEla_scene');
+            if(saved) {
+                if(confirm('¿Cargar escena guardada de localStorage?\n(Cancelar para cargar desde archivo)')) {
+                    this.deserializeScene(JSON.parse(saved));
+                    return;
+                }
+            }
+            
+            // Cargar desde archivo
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        this.deserializeScene(data);
+                        alert('✅ Escena cargada correctamente');
+                    } catch(err) {
+                        alert('❌ Error al cargar: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+        
+        clearScene() {
+            if(!confirm('¿Seguro que deseas eliminar TODOS los elementos?')) return;
+            this.objects.forEach(o => this.scene.remove(o));
+            this.objects = [];
+            this.select(null);
+            this.resizeHandles = [];
+        }
+        
+        serializeScene() {
+            return {
+                version: '1.0',
+                date: new Date().toISOString(),
+                camera: {
+                    position: { x: this.camera.position.x, y: this.camera.position.y, z: this.camera.position.z },
+                    target: { x: this.controls.target.x, y: this.controls.target.y, z: this.controls.target.z }
+                },
+                objects: this.objects.map(o => {
+                    const data = {
+                        type: o.userData.type,
+                        position: { x: o.position.x, y: o.position.y, z: o.position.z },
+                        rotation: o.rotation.y
+                    };
+                    
+                    // Propiedades específicas por tipo
+                    switch(o.userData.type) {
+                        case 'straight':
+                            data.length = o.userData.length;
+                            data.width = o.userData.width;
+                            break;
+                        case 'curve':
+                            data.radius = o.userData.radius;
+                            data.angle = o.userData.angle;
+                            data.width = o.userData.width;
+                            break;
+                        case 'roundabout':
+                            data.radius = o.userData.radius;
+                            data.width = o.userData.width;
+                            break;
+                        case 'parametricRoundabout':
+                            data.diametro = o.userData.diametro;
+                            data.ancho = o.userData.ancho;
+                            break;
+                        case 'octagon':
+                            data.area = o.userData.area;
+                            data.height = o.userData.height;
+                            break;
+                        case 'pyramid':
+                            data.levels = o.userData.levels;
+                            break;
+                        case 'cybertruck':
+                            data.velocity = o.userData.velocity || 0;
+                            break;
+                    }
+                    return data;
+                })
+            };
+        }
+        
+        deserializeScene(data) {
+            // Limpiar escena actual
+            this.objects.forEach(o => this.scene.remove(o));
+            this.objects = [];
+            this.select(null);
+            this.resizeHandles = [];
+            
+            // Restaurar cámara
+            if(data.camera) {
+                this.camera.position.set(data.camera.position.x, data.camera.position.y, data.camera.position.z);
+                if(data.camera.target) {
+                    this.controls.target.set(data.camera.target.x, data.camera.target.y, data.camera.target.z);
+                }
+            }
+            
+            // Recrear objetos
+            data.objects.forEach(obj => {
+                let newObj = null;
+                
+                switch(obj.type) {
+                    case 'straight':
+                        newObj = this.createStraight(obj.length);
+                        if(obj.width) newObj.userData.width = obj.width;
+                        break;
+                    case 'curve':
+                        newObj = this.createCurve(obj.radius, obj.angle);
+                        if(obj.width) newObj.userData.width = obj.width;
+                        break;
+                    case 'roundabout':
+                        newObj = this.createRoundaboutObj(obj.radius, obj.width);
+                        break;
+                    case 'parametricRoundabout':
+                        newObj = this.createParametricRoundaboutObj(obj.diametro, obj.ancho);
+                        break;
+                    case 'octagon':
+                        newObj = this.createOctagonObj(obj.area, obj.height);
+                        break;
+                    case 'pyramid':
+                        newObj = this.createPyramidObj(obj.levels);
+                        break;
+                    case 'cybertruck':
+                        newObj = this.createCybertruckObj();
+                        break;
+                }
+                
+                if(newObj) {
+                    newObj.position.set(obj.position.x, obj.position.y, obj.position.z);
+                    newObj.rotation.y = obj.rotation;
+                    this.scene.add(newObj);
+                    this.objects.push(newObj);
+                    
+                    // Para vehículos, agregar a la lista de vehículos
+                    if(obj.type === 'cybertruck') {
+                        this.vehicles.push(newObj);
+                    }
+                }
+            });
+            
+            // Mostrar base
+            this.showBaseArea();
+        }
+
+        // Agrega pirámides sin limpiar la escena existente
+        addPyramidsToScene() {
+            const V2V = this.OCT_RADIUS * 2;
+            const cols = 2;
+            const rows = 12;
+            
+            const spacingX = this.BASE_REAL_X / cols;
+            const spacingZ = this.BASE_REAL_Z / rows;
+            
+            const startX = -this.BASE_REAL_X/2 + spacingX/2;
+            const startZ = -this.BASE_REAL_Z/2 + spacingZ/2;
+            
+            // Zona de exclusión para la glorieta y carreteras centrales
+            const exclusionRadius = 80; // No poner pirámides a menos de 80m del centro
+            
+            for(let row = 0; row < rows; row++) {
+                for(let col = 0; col < cols; col++) {
+                    const x = startX + col * spacingX;
+                    const z = startZ + row * spacingZ;
+                    
+                    // Saltar si está muy cerca del centro (zona de carreteras)
+                    if(Math.abs(z) < exclusionRadius) continue;
+                    
+                    const pyramid = this.createPyramidObj([6, 5, 4, 3, 2]);
+                    pyramid.position.set(x, 0, z);
+                    this.scene.add(pyramid);
+                    this.objects.push(pyramid);
+                }
+            }
         }
 
         // --- TEXTURAS NUMÉRICAS PARA OCTÁGONO ---
@@ -234,6 +651,446 @@
                 ctx.fillText((i + 1).toString(), 64, 64);
                 return new THREE.CanvasTexture(canvas);
             });
+        }
+
+        // =====================================================
+        // TESLA CYBERTRUCK - Modelo 3D a escala real
+        // Dimensiones: 5.683m × 2.032m × 1.791m
+        // =====================================================
+        
+        addCybertruck() {
+            const truck = this.createCybertruckObj();
+            truck.position.set(0, 0, 0);
+            this.scene.add(truck);
+            this.objects.push(truck);
+            this.vehicles.push(truck);
+            this.activeVehicle = truck;
+            this.select(truck);
+            return truck;
+        }
+        
+        createCybertruckObj() {
+            const g = new THREE.Group();
+            const C = this.CYBER;
+            
+            g.userData = {
+                type: 'cybertruck',
+                // Dimensiones
+                length: C.LENGTH,
+                width: C.WIDTH,
+                height: C.HEIGHT,
+                wheelbase: C.WHEELBASE,
+                // Estado de física
+                velocity: 0,           // Velocidad actual m/s
+                angularVelocity: 0,    // Velocidad angular rad/s
+                steering: 0,           // Ángulo de dirección
+                // Propiedades físicas
+                maxSpeed: C.MAX_SPEED,
+                acceleration: C.ACCELERATION,
+                brakeForce: C.BRAKE_FORCE,
+                turnRate: C.TURN_RATE,
+                friction: C.FRICTION
+            };
+            
+            this.buildCybertruck(g);
+            return g;
+        }
+        
+        buildCybertruck(g) {
+            // Limpiar geometrías anteriores
+            g.children.forEach(c => { 
+                if(c.geometry) c.geometry.dispose(); 
+            });
+            g.remove(...g.children);
+            
+            const C = this.CYBER;
+            const L = C.LENGTH;      // 5.683m
+            const W = C.WIDTH;       // 2.032m
+            const H = C.HEIGHT;      // 1.791m
+            const GC = C.GROUND_CLEARANCE; // 0.35m despeje
+            
+            // === CHASIS BASE (forma trapezoidal vista lateral) ===
+            // La Cybertruck tiene forma angular característica
+            
+            // 1. CUERPO PRINCIPAL - Geometría angular
+            const bodyShape = new THREE.Shape();
+            // Vista lateral (perfil XY, luego extruido en Z)
+            // Coordenadas relativas al centro del vehículo
+            const hL = L / 2;  // Media longitud
+            const hH = H / 2;  // Media altura
+            
+            // Perfil lateral de la Cybertruck (forma triangular/angular)
+            // Puntos del perfil (X = largo, Y = alto)
+            bodyShape.moveTo(-hL, GC);                      // Frente inferior
+            bodyShape.lineTo(-hL + 0.3, GC);                // Base frontal
+            bodyShape.lineTo(-hL + 0.5, GC + 0.6);          // Subida frontal
+            bodyShape.lineTo(-hL + 1.2, GC + 1.3);          // Parabrisas inicio
+            bodyShape.lineTo(-hL + 2.2, H - 0.1);           // Techo frontal
+            bodyShape.lineTo(hL - 2.0, H - 0.1);            // Techo trasero
+            bodyShape.lineTo(hL - 0.8, GC + 0.8);           // Bajada trasera
+            bodyShape.lineTo(hL, GC + 0.6);                 // Caja trasera
+            bodyShape.lineTo(hL, GC);                       // Esquina trasera inferior
+            bodyShape.lineTo(-hL, GC);                      // Cerrar forma
+            
+            const extrudeSettings = {
+                depth: W,
+                bevelEnabled: false
+            };
+            
+            const bodyGeo = new THREE.ExtrudeGeometry(bodyShape, extrudeSettings);
+            bodyGeo.translate(0, 0, -W/2); // Centrar en Z
+            
+            const body = new THREE.Mesh(bodyGeo, this.matCyberBody);
+            body.castShadow = true;
+            body.receiveShadow = true;
+            body.name = 'body';
+            g.add(body);
+            
+            // 2. BARRA DE LUZ FRONTAL (característica de la Cybertruck)
+            const lightBarGeo = new THREE.BoxGeometry(0.05, 0.08, W - 0.2);
+            const lightBar = new THREE.Mesh(lightBarGeo, this.matCyberLight);
+            lightBar.position.set(-hL + 0.35, GC + 0.75, 0);
+            lightBar.name = 'frontLightBar';
+            g.add(lightBar);
+            
+            // 3. BARRA DE LUZ TRASERA
+            const tailLightGeo = new THREE.BoxGeometry(0.05, 0.05, W - 0.3);
+            const tailLight = new THREE.Mesh(tailLightGeo, this.matCyberTailLight);
+            tailLight.position.set(hL - 0.05, GC + 0.9, 0);
+            tailLight.name = 'tailLightBar';
+            g.add(tailLight);
+            
+            // 4. VENTANAS (cristal oscuro)
+            // Parabrisas frontal
+            const windshieldGeo = new THREE.PlaneGeometry(1.2, W - 0.4);
+            const windshield = new THREE.Mesh(windshieldGeo, this.matCyberWindow);
+            windshield.position.set(-hL + 1.7, GC + 1.15, 0);
+            windshield.rotation.z = -Math.PI / 4; // Inclinado
+            windshield.rotation.y = Math.PI / 2;
+            windshield.name = 'windshield';
+            g.add(windshield);
+            
+            // 5. RUEDAS (4 ruedas con detalles)
+            const wheelRadius = 0.45;
+            const wheelWidth = 0.35;
+            const wheelPositions = [
+                { x: -C.WHEELBASE/2 + 0.3, z: W/2 - wheelWidth/2 - 0.1 },  // Frontal izq
+                { x: -C.WHEELBASE/2 + 0.3, z: -W/2 + wheelWidth/2 + 0.1 }, // Frontal der
+                { x: C.WHEELBASE/2 - 0.3, z: W/2 - wheelWidth/2 - 0.1 },   // Trasera izq
+                { x: C.WHEELBASE/2 - 0.3, z: -W/2 + wheelWidth/2 + 0.1 }   // Trasera der
+            ];
+            
+            wheelPositions.forEach((pos, i) => {
+                const wheelGroup = new THREE.Group();
+                
+                // Neumático
+                const tireGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 24);
+                const tire = new THREE.Mesh(tireGeo, this.matCyberWheel);
+                tire.rotation.x = Math.PI / 2;
+                wheelGroup.add(tire);
+                
+                // Rin (llanta)
+                const rimGeo = new THREE.CylinderGeometry(wheelRadius * 0.65, wheelRadius * 0.65, wheelWidth + 0.02, 6);
+                const rimMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.3 });
+                const rim = new THREE.Mesh(rimGeo, rimMat);
+                rim.rotation.x = Math.PI / 2;
+                wheelGroup.add(rim);
+                
+                wheelGroup.position.set(pos.x, wheelRadius, pos.z);
+                wheelGroup.name = `wheel_${i}`;
+                wheelGroup.userData.isFront = i < 2; // Ruedas frontales giran
+                g.add(wheelGroup);
+            });
+            
+            // 6. CAJA DE CARGA (Vault)
+            const vaultGeo = new THREE.BoxGeometry(1.85, 0.4, 1.3);
+            const vault = new THREE.Mesh(vaultGeo, this.matCyberBody);
+            vault.position.set(hL - 1.0, GC + 0.6, 0);
+            vault.name = 'vault';
+            g.add(vault);
+            
+            // 7. ETIQUETA INFORMATIVA
+            this.addCybertruckLabel(g);
+            
+            // 8. HIGHLIGHT para selección
+            const highlightGeo = new THREE.BoxGeometry(L + 0.2, H + 0.2, W + 0.2);
+            const highlight = new THREE.Mesh(highlightGeo, new THREE.MeshBasicMaterial({
+                color: 0x00ff88,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.3
+            }));
+            highlight.position.y = H / 2 + GC;
+            highlight.visible = false;
+            highlight.name = 'highlight';
+            g.add(highlight);
+        }
+        
+        addCybertruckLabel(g) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, 512, 128);
+            
+            ctx.fillStyle = '#10b981';
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Tesla Cybertruck', 256, 35);
+            
+            ctx.fillStyle = '#60a5fa';
+            ctx.font = '20px Arial';
+            ctx.fillText(`${this.CYBER.LENGTH}m × ${this.CYBER.WIDTH}m × ${this.CYBER.HEIGHT}m`, 256, 70);
+            
+            ctx.fillStyle = '#888';
+            ctx.font = '16px Arial';
+            ctx.fillText('WASD: Mover | Q/E: Girar | Shift: Turbo', 256, 105);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: tex });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.position.set(0, this.CYBER.HEIGHT + 1.5, 0);
+            sprite.scale.set(8, 2, 1);
+            sprite.name = 'label';
+            g.add(sprite);
+        }
+        
+        // === FÍSICA Y MOVIMIENTO DE VEHÍCULOS ===
+        updateVehicles(deltaTime) {
+            this.vehicles.forEach(vehicle => {
+                if(vehicle.userData.type !== 'cybertruck') return;
+                
+                const data = vehicle.userData;
+                let acceleration = 0;
+                
+                // Solo mover si este vehículo está activo/seleccionado
+                if(this.activeVehicle === vehicle || this.selected === vehicle) {
+                    const turboMultiplier = this.vehicleKeys.turbo ? 1.8 : 1.0;
+                    
+                    // Acelerar/Frenar
+                    if(this.vehicleKeys.forward) {
+                        acceleration = data.acceleration * turboMultiplier;
+                    } else if(this.vehicleKeys.backward) {
+                        if(data.velocity > 0.5) {
+                            // Frenando
+                            acceleration = -data.brakeForce;
+                        } else {
+                            // Reversa
+                            acceleration = -data.acceleration * 0.5;
+                        }
+                    }
+                    
+                    // Girar (solo si hay velocidad)
+                    if(Math.abs(data.velocity) > 0.1) {
+                        const turnFactor = Math.min(1, Math.abs(data.velocity) / 10) * Math.sign(data.velocity);
+                        if(this.vehicleKeys.left) {
+                            vehicle.rotation.y += data.turnRate * deltaTime * turnFactor;
+                        }
+                        if(this.vehicleKeys.right) {
+                            vehicle.rotation.y -= data.turnRate * deltaTime * turnFactor;
+                        }
+                    }
+                }
+                
+                // Aplicar física
+                data.velocity += acceleration * deltaTime;
+                data.velocity *= data.friction; // Fricción
+                
+                // Limitar velocidad
+                const maxSpd = this.vehicleKeys.turbo ? data.maxSpeed * 1.5 : data.maxSpeed;
+                data.velocity = Math.max(-maxSpd * 0.3, Math.min(maxSpd, data.velocity));
+                
+                // Detener si velocidad muy baja
+                if(Math.abs(data.velocity) < 0.05 && acceleration === 0) {
+                    data.velocity = 0;
+                }
+                
+                // Mover vehículo (el frente está en -X local, así que usamos cos/sin invertidos)
+                if(data.velocity !== 0) {
+                    // Dirección: el frente de la Cybertruck apunta hacia -X local
+                    // Con rotation.y = 0, el frente mira hacia -X global
+                    // Entonces movemos en la dirección del frente (eje -X rotado)
+                    const moveX = -Math.cos(vehicle.rotation.y) * data.velocity * deltaTime;
+                    const moveZ = Math.sin(vehicle.rotation.y) * data.velocity * deltaTime;
+                    vehicle.position.x += moveX;
+                    vehicle.position.z += moveZ;
+                    
+                    // Animar ruedas
+                    this.animateWheels(vehicle, data.velocity * deltaTime);
+                    
+                    // Verificar snap con carreteras
+                    this.checkVehicleRoadSnap(vehicle);
+                }
+            });
+        }
+        
+        animateWheels(vehicle, distance) {
+            const wheelRadius = 0.45;
+            const rotationAngle = distance / wheelRadius;
+            
+            vehicle.children.forEach(child => {
+                if(child.name && child.name.startsWith('wheel_')) {
+                    // Rotar la rueda sobre su eje
+                    const tire = child.children[0];
+                    if(tire) {
+                        tire.rotation.y += rotationAngle;
+                    }
+                }
+            });
+        }
+        
+        // === SNAP DE VEHÍCULO CON CARRETERAS ===
+        checkVehicleRoadSnap(vehicle) {
+            const SNAP_DIST = 4; // Distancia de snap reducida (4 metros)
+            const SNAP_ANGLE = 0.3; // Tolerancia angular en radianes (~17°)
+            const CENTER_THRESHOLD = 3.0; // Umbral para centrar en carril (muy relajado)
+            const ANGLE_SMOOTH = 0.02; // Factor de suavizado angular (muy suave)
+            const CENTER_SMOOTH = 0.004; // Factor de suavizado de centrado (muy suave)
+            const vPos = vehicle.position;
+            
+            let bestSnap = null;
+            let bestDist = Infinity;
+            
+            for(let obj of this.objects) {
+                if(obj === vehicle) continue;
+                
+                // Para carreteras rectas
+                if(obj.userData.type === 'straight') {
+                    const roadPos = obj.position;
+                    const roadRot = obj.rotation.y;
+                    const roadLen = obj.userData.length / 2;
+                    const roadWidth = obj.userData.width / 2;
+                    
+                    // Dirección de la carretera (a lo largo de Z local de la carretera)
+                    // rotation.y = 0 significa que la carretera va de -Z a +Z
+                    const roadDirX = Math.sin(roadRot);
+                    const roadDirZ = Math.cos(roadRot);
+                    
+                    // Vector del vehículo a la carretera
+                    const dx = vPos.x - roadPos.x;
+                    const dz = vPos.z - roadPos.z;
+                    
+                    // Proyección sobre la dirección de la carretera
+                    const alongRoad = dx * roadDirX + dz * roadDirZ;
+                    // Proyección perpendicular (distancia al centro)
+                    const perpRoad = dx * roadDirZ - dz * roadDirX;
+                    
+                    // Verificar si está sobre la carretera
+                    if(Math.abs(alongRoad) < roadLen + 2 && Math.abs(perpRoad) < roadWidth + 2) {
+                        const dist = Math.abs(perpRoad);
+                        if(dist < bestDist) {
+                            bestDist = dist;
+                            bestSnap = {
+                                type: 'straight',
+                                roadRot: roadRot,
+                                perpRoad: perpRoad,
+                                perpDirX: roadDirZ,  // Dirección perpendicular
+                                perpDirZ: -roadDirX
+                            };
+                        }
+                    }
+                }
+                
+                // Para glorietas/rotondas
+                if(obj.userData.type === 'roundabout' || obj.userData.type === 'parametricRoundabout') {
+                    const center = obj.position;
+                    const radius = obj.userData.radius || obj.userData.diametro / 2;
+                    const width = obj.userData.width || obj.userData.ancho || 10;
+                    
+                    // Distancia al centro de la glorieta
+                    const dx = vPos.x - center.x;
+                    const dz = vPos.z - center.z;
+                    const distToCenter = Math.sqrt(dx * dx + dz * dz);
+                    
+                    // Radio del carril (centro de la carretera de la glorieta)
+                    const laneRadius = radius;
+                    const innerRadius = radius - width/2;
+                    const outerRadius = radius + width/2;
+                    
+                    // Verificar si está en el anillo de la glorieta
+                    if(distToCenter > innerRadius - 2 && distToCenter < outerRadius + 2) {
+                        const distFromLane = Math.abs(distToCenter - laneRadius);
+                        if(distFromLane < bestDist) {
+                            // Ángulo tangencial (dirección de circulación)
+                            const angleToCenter = Math.atan2(dx, dz);
+                            bestDist = distFromLane;
+                            bestSnap = {
+                                type: 'roundabout',
+                                // Tangente a la circunferencia (sentido antihorario)
+                                tangentAngle: angleToCenter + Math.PI / 2,
+                                distFromLane: distToCenter - laneRadius,
+                                center: center,
+                                laneRadius: laneRadius
+                            };
+                        }
+                    }
+                }
+            }
+            
+            // Aplicar snap si encontramos una carretera cercana
+            if(bestSnap) {
+                const vehicleAngle = vehicle.rotation.y;
+                
+                if(bestSnap.type === 'straight') {
+                    // Para rectas: alinear con la dirección de la carretera
+                    // El frente del vehículo está en -X local, así que añadimos PI/2
+                    const roadAngle1 = bestSnap.roadRot + Math.PI / 2;
+                    const roadAngle2 = bestSnap.roadRot - Math.PI / 2;
+                    
+                    // Elegir el ángulo más cercano a la dirección actual
+                    const diff1 = this.normalizeAngle(roadAngle1 - vehicleAngle);
+                    const diff2 = this.normalizeAngle(roadAngle2 - vehicleAngle);
+                    
+                    const targetAngle = Math.abs(diff1) < Math.abs(diff2) ? roadAngle1 : roadAngle2;
+                    const angleDiff = this.normalizeAngle(targetAngle - vehicleAngle);
+                    
+                    if(Math.abs(angleDiff) < SNAP_ANGLE) {
+                        // Snap de ángulo suave
+                        vehicle.rotation.y += angleDiff * ANGLE_SMOOTH;
+                        
+                        // Centrar en el carril (solo si está lejos del centro)
+                        if(Math.abs(bestSnap.perpRoad) > CENTER_THRESHOLD) {
+                            const centerForce = -bestSnap.perpRoad * CENTER_SMOOTH;
+                            vehicle.position.x += centerForce * bestSnap.perpDirX;
+                            vehicle.position.z += centerForce * bestSnap.perpDirZ;
+                        }
+                    }
+                } else if(bestSnap.type === 'roundabout') {
+                    // Para glorietas: alinear con la tangente
+                    const tangent1 = bestSnap.tangentAngle;
+                    const tangent2 = bestSnap.tangentAngle + Math.PI;
+                    
+                    const diff1 = this.normalizeAngle(tangent1 - vehicleAngle);
+                    const diff2 = this.normalizeAngle(tangent2 - vehicleAngle);
+                    
+                    const targetAngle = Math.abs(diff1) < Math.abs(diff2) ? tangent1 : tangent2;
+                    const angleDiff = this.normalizeAngle(targetAngle - vehicleAngle);
+                    
+                    if(Math.abs(angleDiff) < SNAP_ANGLE * 1.5) {
+                        // Snap angular más suave en glorietas
+                        vehicle.rotation.y += angleDiff * (ANGLE_SMOOTH * 0.8);
+                        
+                        // Mantener en el radio correcto (solo si está lejos)
+                        if(Math.abs(bestSnap.distFromLane) > CENTER_THRESHOLD) {
+                            const dx = vPos.x - bestSnap.center.x;
+                            const dz = vPos.z - bestSnap.center.z;
+                            const currentDist = Math.sqrt(dx * dx + dz * dz);
+                            const correction = (bestSnap.laneRadius - currentDist) * CENTER_SMOOTH;
+                            vehicle.position.x += (dx / currentDist) * correction;
+                            vehicle.position.z += (dz / currentDist) * correction;
+                        }
+                    }
+                }
+            }
+        }
+        
+        normalizeAngle(angle) {
+            while(angle > Math.PI) angle -= 2 * Math.PI;
+            while(angle < -Math.PI) angle += 2 * Math.PI;
+            return angle;
         }
 
         // --- MÓDULO OCTAGONAL 50m² ---
@@ -476,7 +1333,7 @@
         
         autoSnapRoadPieces(pieces) {
             // Aplicar snap a cada pieza contra el resto
-            const SNAP_DIST = 25;
+            const SNAP_DIST = 8; // Distancia de snap reducida
             for(let i = 0; i < pieces.length; i++) {
                 for(let j = i + 1; j < pieces.length; j++) {
                     const p1 = pieces[i];
@@ -565,48 +1422,36 @@
         }
 
         // --- OPCIÓN 2: DISTRIBUIDOR RADIAL ---
+        // Crea una glorieta central con 8 carreteras radiales conectadas
+        // Basado en el diseño de simuladorPlantilla2.html
         addRadialHub() {
-            // 1. Limpiar o no? Mejor crear en centro.
-            // Si el usuario quiere borrar todo, puede usar Master Shape o borrar manual.
-            // Crearemos el hub en (0,0,0)
+            // Parámetros del distribuidor (estilo plantilla 2)
+            const hubRadius = 50;      // Radio del eje de la glorieta (50m)
+            const roadWidth = 10;      // Ancho de carretera (10m)
+            const armLength = 100;     // Longitud de cada brazo (100m)
+            const numArms = 8;         // 8 brazos radiales
             
-            // Crear Rotonda Base
-            const hub = this.createRoundaboutObj(155, 10);
-            hub.position.set(0,0,0);
-            this.scene.add(hub); this.objects.push(hub);
+            // Crear Glorieta Central usando createRoundaboutObj (con isla verde)
+            const hub = this.createRoundaboutObj(hubRadius, roadWidth);
+            hub.position.set(0, 0, 0);
+            this.scene.add(hub); 
+            this.objects.push(hub);
 
-            // Obtener conectores de la rotonda
-            const connectors = this.getConnectors(hub);
-
-            // Crear 8 rectas conectadas
-            connectors.forEach((conn, index) => {
-                const len = 150; // Longitud de los brazos
-                const road = this.createStraight(len);
+            // Crear 8 rectas conectadas radialmente
+            for(let i = 0; i < numArms; i++) {
+                const road = this.createStraight(armLength);
                 
-                // Posicionar para conectar
-                // El conector de la rotonda es un punto y una dirección (hacia afuera).
-                // El conector de la carretera recta tiene Frente (-Z) y Atrás (+Z).
-                // Queremos que el "Atrás" de la recta conecte con la rotonda, y el "Frente" apunte afuera.
-                // O viceversa.
-                // Connector 'Straight' tiene dir (0,0,1) en Atrás.
-                // Queremos alinear (Road Back) con (Hub Port).
-                // Road Back Pos = (0,0,h). Road Back Dir = (0,0,1).
-                // Target Pos = conn.pos. Target Dir = conn.dir.
-                // Alinear: Road.pos = Target Pos - (LocalBackPos rotado).
-                // Road.rot = Atan2(TargetDir) ...?
-                // Simplemente: La recta debe rotarse igual que el angulo del conector de la rotonda.
-                // Angulo del conector rotonda: index * 45 deg.
+                // Ángulo del brazo (cada 45°)
+                const angle = (i * 45) * (Math.PI / 180);
                 
-                const angle = (index * 45) * (Math.PI/180);
+                // La recta en Three.js va de -Z a +Z cuando rotation.y = 0
+                // Rotamos para que apunte radialmente hacia afuera
                 road.rotation.y = angle;
                 
-                // Calcular posición
-                // El centro de la recta debe estar desplazado del centro de la rotonda
-                // Distancia = Radio Rotonda + (Longitud Recta / 2)
-                const dist = 155 + (len / 2); // 155 es radio eje rotonda.
-                // Nota: Queremos conectar el borde.
-                // getConnectors devuelve la posición en el radio R (155).
-                // Si alineamos road, su centro estará a R + L/2.
+                // Posición: el centro de la recta está a distancia = radio + longitud/2
+                // Para que el extremo interior toque el borde exterior de la glorieta
+                const outerRadius = hubRadius + roadWidth / 2;
+                const dist = outerRadius + armLength / 2;
                 
                 road.position.set(
                     Math.cos(angle) * dist,
@@ -616,7 +1461,11 @@
 
                 this.scene.add(road);
                 this.objects.push(road);
-            });
+            }
+            
+            // Ajustar cámara para ver todo el distribuidor
+            this.camera.position.set(0, 250, 300);
+            this.camera.lookAt(0, 0, 0);
             
             this.select(hub);
         }
@@ -820,25 +1669,80 @@
             g.remove(...g.children);
             const { radius, width } = g.userData; 
             const islandRadius = radius - (width/2);
+            const outerRadius = radius + (width/2);
 
-            // Isla
+            // Isla central verde
             const grassGeo = new THREE.CircleGeometry(islandRadius, 64);
             const grass = new THREE.Mesh(grassGeo, this.matGrass);
             grass.rotation.x = -Math.PI/2; grass.position.y = 0.02;
+            grass.name = 'isla';
             g.add(grass);
 
-            // Vía
-            const roadGeo = new THREE.RingGeometry(radius - width/2, radius + width/2, 64);
+            // Vía (anillo de carretera)
+            const roadGeo = new THREE.RingGeometry(islandRadius, outerRadius, 64);
             const mat = this.selected === g ? this.matSel : this.matRoad;
             const road = new THREE.Mesh(roadGeo, mat);
             road.rotation.x = -Math.PI/2; road.receiveShadow = true;
+            road.name = 'carretera';
             g.add(road);
 
-            // Línea
+            // Línea central del eje
             const lGeo = new THREE.RingGeometry(radius - 0.2, radius + 0.2, 64);
             const line = new THREE.Mesh(lGeo, this.matLines);
             line.rotation.x = -Math.PI/2; line.position.y = 0.05;
             g.add(line);
+            
+            // Etiqueta con dimensiones y área
+            this.addRoundaboutInfoLabel(g, radius, width);
+        }
+        
+        // Etiqueta informativa para roundabout clásico
+        addRoundaboutInfoLabel(g, radius, width) {
+            const outerRadius = radius + width/2;
+            const areaTotal = Math.PI * outerRadius * outerRadius; // Área total
+            const islandRadius = radius - width/2;
+            const areaIsla = Math.PI * islandRadius * islandRadius; // Área isla
+            const areaCarretera = areaTotal - areaIsla; // Área solo carretera
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 160;
+            const ctx = canvas.getContext('2d');
+            
+            // Fondo semitransparente
+            ctx.fillStyle = 'rgba(0,0,0,0.75)';
+            ctx.fillRect(0, 0, 512, 160);
+            
+            // Línea 1: Radio y diámetro
+            ctx.fillStyle = '#60a5fa';
+            ctx.font = 'bold 26px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`Radio: ${radius}m | ⌀${radius * 2}m`, 256, 35);
+            
+            // Línea 2: Área total
+            ctx.fillStyle = '#22c55e';
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText(`Área Total: ${areaTotal.toFixed(0)} m²`, 256, 75);
+            
+            // Línea 3: Área carretera
+            ctx.fillStyle = '#888';
+            ctx.font = '20px Arial';
+            ctx.fillText(`Carretera: ${areaCarretera.toFixed(0)} m² | Isla: ${areaIsla.toFixed(0)} m²`, 256, 115);
+            
+            // Línea 4: Escala maqueta
+            ctx.fillStyle = '#666';
+            ctx.font = '16px Arial';
+            const maqueta = ((radius * 2) / 3).toFixed(1); // Escala 1:300
+            ctx.fillText(`Maqueta 1:300: ⌀${maqueta}cm`, 256, 145);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: tex });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.position.set(0, 12, 0);
+            sprite.scale.set(30, 9, 1);
+            sprite.name = 'etiqueta';
+            g.add(sprite);
         }
 
         generateMasterShape() {
@@ -884,20 +1788,185 @@
         }
 
         buildStraight(g) {
-            g.children.forEach(c => c.geometry.dispose()); g.remove(...g.children);
+            // Limpiar hijos anteriores excepto handles
+            const toRemove = g.children.filter(c => !c.userData || !c.userData.isResizeHandle);
+            toRemove.forEach(c => {
+                if(c.geometry) c.geometry.dispose();
+                g.remove(c);
+            });
+            
             const { length, width } = g.userData;
             const geo = new THREE.PlaneGeometry(width, length);
             const mat = this.selected === g ? this.matSel : this.matRoad;
             const mesh = new THREE.Mesh(geo, mat);
             mesh.rotation.x = -Math.PI/2; mesh.receiveShadow = true;
+            mesh.name = 'roadSurface';
             g.add(mesh);
+            
             const cnt = Math.floor(length/10);
             const lGeo = new THREE.PlaneGeometry(0.8, 4);
             const lines = new THREE.InstancedMesh(lGeo, this.matLines, cnt);
             lines.rotation.x = -Math.PI/2; lines.position.y = 0.05;
+            lines.name = 'centerLines';
             const dummy = new THREE.Object3D();
             for(let i=0; i<cnt; i++) { dummy.position.set(0, (i - cnt/2 + 0.5)*10, 0); dummy.updateMatrix(); lines.setMatrixAt(i, dummy.matrix); }
             lines.instanceMatrix.needsUpdate = true; g.add(lines);
+            
+            // Actualizar posición de handles si existen
+            this.updateResizeHandles(g);
+        }
+        
+        // === SISTEMA DE RESIZE HANDLES (ESTILO WORD) ===
+        createResizeHandles(roadObj) {
+            // Eliminar handles anteriores de este objeto
+            this.removeResizeHandles(roadObj);
+            
+            if(roadObj.userData.type !== 'straight') return;
+            
+            const { length } = roadObj.userData;
+            const handleSize = 3; // Tamaño del handle en metros
+            
+            // Handle en extremo positivo (adelante)
+            const handleGeoTop = new THREE.SphereGeometry(handleSize, 16, 16);
+            const handleTop = new THREE.Mesh(handleGeoTop, this.matHandle);
+            handleTop.position.set(0, 1.5, length/2);
+            handleTop.userData = { 
+                isResizeHandle: true, 
+                handleType: 'top', 
+                parentRoad: roadObj,
+                direction: 1 // Dirección positiva
+            };
+            handleTop.name = 'handleTop';
+            roadObj.add(handleTop);
+            
+            // Handle en extremo negativo (atrás)
+            const handleGeoBot = new THREE.SphereGeometry(handleSize, 16, 16);
+            const handleBot = new THREE.Mesh(handleGeoBot, this.matHandle);
+            handleBot.position.set(0, 1.5, -length/2);
+            handleBot.userData = { 
+                isResizeHandle: true, 
+                handleType: 'bottom', 
+                parentRoad: roadObj,
+                direction: -1 // Dirección negativa
+            };
+            handleBot.name = 'handleBottom';
+            roadObj.add(handleBot);
+            
+            // Agregar etiqueta de longitud
+            this.addRoadLengthLabel(roadObj);
+            
+            // Registrar handles
+            this.resizeHandles.push(handleTop, handleBot);
+        }
+        
+        addRoadLengthLabel(roadObj) {
+            // Remover etiqueta anterior si existe
+            const oldLabel = roadObj.getObjectByName('lengthLabel');
+            if(oldLabel) roadObj.remove(oldLabel);
+            
+            const { length } = roadObj.userData;
+            
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.strokeStyle = '#00aaff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(2, 2, 252, 60);
+            
+            ctx.fillStyle = '#00aaff';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${Math.round(length)}m`, 128, 32);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+            const sprite = new THREE.Sprite(spriteMat);
+            sprite.position.set(0, 8, 0);
+            sprite.scale.set(12, 3, 1);
+            sprite.name = 'lengthLabel';
+            sprite.renderOrder = 999;
+            roadObj.add(sprite);
+        }
+        
+        updateRoadLengthLabel(roadObj) {
+            const label = roadObj.getObjectByName('lengthLabel');
+            if(!label) return;
+            
+            const { length } = roadObj.userData;
+            
+            // Recrear textura con nuevo valor
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.fillRect(0, 0, 256, 64);
+            ctx.strokeStyle = '#00aaff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(2, 2, 252, 60);
+            
+            ctx.fillStyle = '#00aaff';
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${Math.round(length)}m`, 128, 32);
+            
+            label.material.map.dispose();
+            label.material.map = new THREE.CanvasTexture(canvas);
+            label.material.needsUpdate = true;
+        }
+        
+        removeResizeHandles(roadObj) {
+            // Remover handles del objeto
+            const handlesToRemove = roadObj.children.filter(c => c.userData && c.userData.isResizeHandle);
+            handlesToRemove.forEach(h => {
+                roadObj.remove(h);
+                if(h.geometry) h.geometry.dispose();
+                const idx = this.resizeHandles.indexOf(h);
+                if(idx > -1) this.resizeHandles.splice(idx, 1);
+            });
+            
+            // Remover etiqueta de longitud
+            const label = roadObj.getObjectByName('lengthLabel');
+            if(label) {
+                roadObj.remove(label);
+                label.material.map.dispose();
+                label.material.dispose();
+            }
+        }
+        
+        updateResizeHandles(roadObj) {
+            if(roadObj.userData.type !== 'straight') return;
+            
+            const { length } = roadObj.userData;
+            
+            // Buscar handles existentes
+            const handleTop = roadObj.children.find(c => c.name === 'handleTop');
+            const handleBot = roadObj.children.find(c => c.name === 'handleBottom');
+            
+            if(handleTop) handleTop.position.z = length/2;
+            if(handleBot) handleBot.position.z = -length/2;
+        }
+        
+        hideAllResizeHandles() {
+            this.resizeHandles.forEach(h => {
+                h.visible = false;
+            });
+        }
+        
+        showResizeHandles(roadObj) {
+            if(roadObj && roadObj.userData.type === 'straight') {
+                // Mostrar solo los handles de este objeto
+                roadObj.children.filter(c => c.userData.isResizeHandle).forEach(h => {
+                    h.visible = true;
+                });
+            }
         }
 
         buildCurve(g) {
@@ -913,7 +1982,11 @@
         }
 
         select(obj) {
-            if(this.selected && this.selected !== obj) this.updateMat(this.selected, this.matRoad);
+            // Ocultar/remover handles del objeto anterior
+            if(this.selected && this.selected !== obj) {
+                this.updateMat(this.selected, this.matRoad);
+                this.removeResizeHandles(this.selected);
+            }
             this.selected = obj;
             const panel = document.getElementById('propPanel');
             const cStraight = document.getElementById('controls-straight');
@@ -929,6 +2002,8 @@
                     cStraight.style.display = 'block'; cCurve.style.display = 'none';
                     document.getElementById('rngLen').value = obj.userData.length;
                     document.getElementById('lblLen').innerText = Math.round(obj.userData.length)+'m';
+                    // Crear handles para resize
+                    this.createResizeHandles(obj);
                 } else if(obj.userData.type === 'octagon') {
                     // Octágono: mostrar área en lugar de longitud
                     cStraight.style.display = 'block'; cCurve.style.display = 'none';
@@ -953,6 +2028,14 @@
                     document.getElementById('rngDiam').value = diametro;
                     document.getElementById('lblDiam').innerText = Math.round(diametro)+'m';
                     document.getElementById('lblArea').innerHTML = `Área: <strong>${area.toFixed(0)} m²</strong> | Maqueta: ⌀${diametroMaqueta}cm`;
+                } else if(obj.userData.type === 'cybertruck') {
+                    // Cybertruck: mostrar info del vehículo
+                    cStraight.style.display = 'none';
+                    cCurve.style.display = 'none';
+                    document.getElementById('controls-roundabout').style.display = 'none';
+                    
+                    // Activar este vehículo para control
+                    this.activeVehicle = obj;
                 } else {
                     cStraight.style.display = 'none'; cCurve.style.display = 'block';
                     document.getElementById('controls-roundabout').style.display = 'none';
@@ -968,8 +2051,28 @@
                 const carretera = obj.getObjectByName('carretera');
                 if(carretera) carretera.material = mat;
             } else if(obj.userData.type === 'roundabout') {
-                // Child 0 is Grass, Child 1 is Road
-                if(obj.children[1]) obj.children[1].material = mat; 
+                // Glorieta clásica: actualizar carretera por nombre
+                const carretera = obj.getObjectByName('carretera');
+                if(carretera) carretera.material = mat;
+            } else if(obj.userData.type === 'cybertruck') {
+                // Cybertruck: mostrar/ocultar highlight
+                const hl = obj.getObjectByName('highlight');
+                if(hl) hl.visible = (mat === this.matSel);
+                // Actualizar color del cuerpo cuando está seleccionado
+                const body = obj.getObjectByName('body');
+                if(body) {
+                    if(mat === this.matSel) {
+                        body.material = new THREE.MeshStandardMaterial({
+                            color: 0x88ccff,
+                            roughness: 0.2,
+                            metalness: 0.9,
+                            emissive: 0x1a3a5c,
+                            emissiveIntensity: 0.3
+                        });
+                    } else {
+                        body.material = this.matCyberBody;
+                    }
+                }
             } else if(obj.userData.type === 'octagon') {
                 // Child 0 is walls, también mostrar/ocultar highlight
                 if(obj.children[0]) obj.children[0].material = mat === this.matSel ? this.matSel : this.matOctWall;
@@ -992,7 +2095,10 @@
         setLength(val) {
             if(this.selected && this.selected.userData.type === 'straight') {
                 this.selected.userData.length = parseFloat(val);
-                document.getElementById('lblLen').innerText = val+'m'; this.buildStraight(this.selected);
+                document.getElementById('lblLen').innerText = val+'m';
+                this.buildStraight(this.selected);
+                this.updateResizeHandles(this.selected);
+                this.updateRoadLengthLabel(this.selected);
             } else if(this.selected && this.selected.userData.type === 'octagon') {
                 // Para octágono, val es el área
                 const area = parseFloat(val);
@@ -1017,6 +2123,13 @@
         }
         deleteSelected() {
             if(this.selected) {
+                // Si es un vehículo, removerlo de la lista de vehículos
+                if(this.selected.userData.type === 'cybertruck') {
+                    this.vehicles = this.vehicles.filter(v => v !== this.selected);
+                    if(this.activeVehicle === this.selected) {
+                        this.activeVehicle = this.vehicles[0] || null;
+                    }
+                }
                 this.scene.remove(this.selected);
                 this.objects = this.objects.filter(o => o !== this.selected);
                 this.select(null);
@@ -1042,7 +2155,19 @@
                 const d2 = new THREE.Vector3(t2x, 0, t2z).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize();
                 arr.push({ pos: p2, dir: d2 });
             } else if (obj.userData.type === 'roundabout') {
-                const R = obj.userData.radius;
+                // Glorieta clásica: 8 conectores en el borde exterior
+                const R = obj.userData.radius + obj.userData.width / 2; // Radio exterior
+                for(let i=0; i<8; i++) {
+                    const angle = (i * 45) * (Math.PI/180);
+                    const lx = Math.cos(angle) * R; const lz = Math.sin(angle) * R;
+                    const dx = Math.cos(angle); const dz = Math.sin(angle);
+                    const p = new THREE.Vector3(lx, 0, lz).applyAxisAngle(new THREE.Vector3(0,1,0), rot).add(pos);
+                    const d = new THREE.Vector3(dx, 0, dz).applyAxisAngle(new THREE.Vector3(0,1,0), rot).normalize();
+                    arr.push({ pos: p, dir: d });
+                }
+            } else if (obj.userData.type === 'parametricRoundabout') {
+                // Glorieta paramétrica: 8 conectores en el borde exterior
+                const R = obj.userData.diametro / 2 + obj.userData.ancho / 2; // Radio exterior
                 for(let i=0; i<8; i++) {
                     const angle = (i * 45) * (Math.PI/180);
                     const lx = Math.cos(angle) * R; const lz = Math.sin(angle) * R;
@@ -1068,7 +2193,8 @@
 
         checkSnap() {
             if(!this.selected || !this.isDragging) return;
-            const SNAP_DIST = 30; const myCons = this.getConnectors(this.selected); let snapped = false;
+            const SNAP_DIST = 8; // Distancia de snap reducida (8 metros)
+            const myCons = this.getConnectors(this.selected); let snapped = false;
             for(let other of this.objects) {
                 if(other === this.selected) continue;
                 const otherCons = this.getConnectors(other);
@@ -1093,59 +2219,209 @@
 
         onDown(e) {
             if(e.button !== 0) return;
-            this.mouse.x = (e.clientX/window.innerWidth)*2-1; this.mouse.y = -(e.clientY/window.innerHeight)*2+1;
+            this.mouse.x = (e.clientX/window.innerWidth)*2-1; 
+            this.mouse.y = -(e.clientY/window.innerHeight)*2+1;
             this.raycaster.setFromCamera(this.mouse, this.camera);
+            
+            // Primero verificar si hay clic en un handle de resize
+            const handleIntersects = this.raycaster.intersectObjects(this.resizeHandles, false);
+            if(handleIntersects.length > 0) {
+                const handle = handleIntersects[0].object;
+                if(handle.userData.isResizeHandle) {
+                    this.isResizing = true;
+                    this.activeHandle = handle;
+                    this.controls.enabled = false;
+                    
+                    // Guardar estado inicial para resize
+                    const parentRoad = handle.userData.parentRoad;
+                    this.resizeStartLength = parentRoad.userData.length;
+                    
+                    // Posición mundial del clic
+                    const p = new THREE.Vector3();
+                    this.raycaster.ray.intersectPlane(this.plane, p);
+                    this.resizeStartPos.copy(p);
+                    
+                    // Cambiar color del handle
+                    handle.material = this.matHandleHover;
+                    return;
+                }
+            }
+            
+            // Si no es un handle, comportamiento normal de arrastre
             const intersects = this.raycaster.intersectObjects(this.objects, true);
             if(intersects.length > 0) {
-                let target = intersects[0].object; while(target.parent && target.parent.type !== 'Scene') target = target.parent;
-                this.select(target); this.isDragging = true; this.controls.enabled = false;
-                const p = new THREE.Vector3(); this.raycaster.ray.intersectPlane(this.plane, p);
+                let target = intersects[0].object; 
+                while(target.parent && target.parent.type !== 'Scene') target = target.parent;
+                this.select(target); 
+                this.isDragging = true; 
+                this.controls.enabled = false;
+                const p = new THREE.Vector3(); 
+                this.raycaster.ray.intersectPlane(this.plane, p);
                 this.dragOffset.subVectors(target.position, p);
-            } else { this.select(null); }
+            } else { 
+                this.select(null); 
+            }
         }
+        
         onMove(e) {
-            if(this.isDragging && this.selected) {
-                this.mouse.x = (e.clientX/window.innerWidth)*2-1; this.mouse.y = -(e.clientY/window.innerHeight)*2+1;
-                this.raycaster.setFromCamera(this.mouse, this.camera);
+            this.mouse.x = (e.clientX/window.innerWidth)*2-1; 
+            this.mouse.y = -(e.clientY/window.innerHeight)*2+1;
+            this.raycaster.setFromCamera(this.mouse, this.camera);
+            
+            // Modo resize: arrastrar handle
+            if(this.isResizing && this.activeHandle) {
                 const p = new THREE.Vector3();
                 if(this.raycaster.ray.intersectPlane(this.plane, p)) {
-                    this.selected.position.addVectors(p, this.dragOffset); this.checkSnap();
+                    const parentRoad = this.activeHandle.userData.parentRoad;
+                    const direction = this.activeHandle.userData.direction;
+                    
+                    // Calcular la dirección de la carretera en espacio mundo
+                    const roadAngle = parentRoad.rotation.y;
+                    const roadDir = new THREE.Vector3(
+                        Math.sin(roadAngle),
+                        0,
+                        Math.cos(roadAngle)
+                    ).normalize();
+                    
+                    // Calcular delta desde el inicio del resize
+                    const delta = new THREE.Vector3().subVectors(p, this.resizeStartPos);
+                    
+                    // Proyección del delta sobre la dirección de la carretera
+                    const projection = delta.dot(roadDir) * direction;
+                    
+                    // Nueva longitud (mínimo 10m, máximo 500m)
+                    // Usamos la proyección directa; mover un extremo modifica la longitud en esa misma cantidad.
+                    const newLength = Math.max(10, Math.min(500, this.resizeStartLength + projection));
+                    
+                    // Actualizar longitud
+                    parentRoad.userData.length = newLength;
+                    this.buildStraight(parentRoad);
+                    
+                    // Actualizar etiqueta de longitud en tiempo real
+                    this.updateRoadLengthLabel(parentRoad);
+                    
+                    // Actualizar UI
+                    document.getElementById('rngLen').value = newLength;
+                    document.getElementById('lblLen').innerText = Math.round(newLength) + 'm';
+                }
+                return;
+            }
+            
+            // Modo hover: destacar handles
+            if(!this.isDragging && !this.isResizing) {
+                const handleIntersects = this.raycaster.intersectObjects(this.resizeHandles, false);
+                this.resizeHandles.forEach(h => {
+                    h.material = this.matHandle;
+                    h.scale.setScalar(1);
+                });
+                if(handleIntersects.length > 0) {
+                    const handle = handleIntersects[0].object;
+                    handle.material = this.matHandleHover;
+                    handle.scale.setScalar(1.3);
+                    document.body.style.cursor = 'ns-resize';
+                } else {
+                    document.body.style.cursor = 'default';
+                }
+            }
+            
+            // Modo arrastre normal
+            if(this.isDragging && this.selected) {
+                const p = new THREE.Vector3();
+                if(this.raycaster.ray.intersectPlane(this.plane, p)) {
+                    this.selected.position.addVectors(p, this.dragOffset); 
+                    this.checkSnap();
                 }
             }
         }
-        onUp() { this.isDragging = false; this.controls.enabled = true; document.getElementById('snapMsg').style.opacity = 0; }
+        
+        onUp() { 
+            // Finalizar resize
+            if(this.isResizing && this.activeHandle) {
+                this.activeHandle.material = this.matHandle;
+                this.activeHandle = null;
+                this.isResizing = false;
+            }
+            
+            this.isDragging = false; 
+            this.controls.enabled = true; 
+            document.getElementById('snapMsg').style.opacity = 0;
+            document.body.style.cursor = 'default';
+        }
         onResize() { this.camera.aspect = window.innerWidth/window.innerHeight; this.camera.updateProjectionMatrix(); this.renderer.setSize(window.innerWidth, window.innerHeight); }
         
         onKeyDown(e) {
+            // Verificar si hay un vehículo activo para control
+            const isVehicle = this.selected && this.selected.userData.type === 'cybertruck';
+            
+            if(isVehicle) {
+                // Control de vehículo
+                switch(e.key.toLowerCase()) {
+                    case 'w': case 'arrowup':
+                        this.vehicleKeys.forward = true;
+                        e.preventDefault();
+                        return;
+                    case 's': case 'arrowdown':
+                        this.vehicleKeys.backward = true;
+                        e.preventDefault();
+                        return;
+                    case 'a': case 'arrowleft':
+                        this.vehicleKeys.left = true;
+                        e.preventDefault();
+                        return;
+                    case 'd': case 'arrowright':
+                        this.vehicleKeys.right = true;
+                        e.preventDefault();
+                        return;
+                    case 'shift':
+                        this.vehicleKeys.turbo = true;
+                        e.preventDefault();
+                        return;
+                }
+            }
+            
             if(!this.selected) return;
             const MOVE_STEP = e.shiftKey ? 10 : 1; // Shift = movimiento rápido
             const ROT_STEP = e.shiftKey ? 15 : 5;  // Grados de rotación
             
+            // Controles estándar para objetos no-vehículo
+            if(!isVehicle) {
+                switch(e.key) {
+                    case 'ArrowUp': case 'w': case 'W':
+                        this.selected.position.z -= MOVE_STEP;
+                        e.preventDefault();
+                        break;
+                    case 'ArrowDown': case 's': case 'S':
+                        this.selected.position.z += MOVE_STEP;
+                        e.preventDefault();
+                        break;
+                    case 'ArrowLeft': case 'a': case 'A':
+                        this.selected.position.x -= MOVE_STEP;
+                        e.preventDefault();
+                        break;
+                    case 'ArrowRight': case 'd': case 'D':
+                        this.selected.position.x += MOVE_STEP;
+                        e.preventDefault();
+                        break;
+                }
+            }
+            
             switch(e.key) {
-                case 'ArrowUp': case 'w': case 'W':
-                    this.selected.position.z -= MOVE_STEP;
-                    e.preventDefault();
-                    break;
-                case 'ArrowDown': case 's': case 'S':
-                    this.selected.position.z += MOVE_STEP;
-                    e.preventDefault();
-                    break;
-                case 'ArrowLeft': case 'a': case 'A':
-                    this.selected.position.x -= MOVE_STEP;
-                    e.preventDefault();
-                    break;
-                case 'ArrowRight': case 'd': case 'D':
-                    this.selected.position.x += MOVE_STEP;
-                    e.preventDefault();
-                    break;
                 case 'q': case 'Q': // Rotar izquierda
-                    this.selected.rotation.y -= ROT_STEP * Math.PI / 180;
-                    this.updateRotationUI();
+                    if(isVehicle) {
+                        this.vehicleKeys.left = true;
+                    } else {
+                        this.selected.rotation.y -= ROT_STEP * Math.PI / 180;
+                        this.updateRotationUI();
+                    }
                     e.preventDefault();
                     break;
                 case 'e': case 'E': // Rotar derecha
-                    this.selected.rotation.y += ROT_STEP * Math.PI / 180;
-                    this.updateRotationUI();
+                    if(isVehicle) {
+                        this.vehicleKeys.right = true;
+                    } else {
+                        this.selected.rotation.y += ROT_STEP * Math.PI / 180;
+                        this.updateRotationUI();
+                    }
                     e.preventDefault();
                     break;
                 case 'Delete': case 'Backspace':
@@ -1159,6 +2435,32 @@
             }
         }
         
+        onKeyUp(e) {
+            switch(e.key.toLowerCase()) {
+                case 'w': case 'arrowup':
+                    this.vehicleKeys.forward = false;
+                    break;
+                case 's': case 'arrowdown':
+                    this.vehicleKeys.backward = false;
+                    break;
+                case 'a': case 'arrowleft':
+                    this.vehicleKeys.left = false;
+                    break;
+                case 'd': case 'arrowright':
+                    this.vehicleKeys.right = false;
+                    break;
+                case 'q':
+                    this.vehicleKeys.left = false;
+                    break;
+                case 'e':
+                    this.vehicleKeys.right = false;
+                    break;
+                case 'shift':
+                    this.vehicleKeys.turbo = false;
+                    break;
+            }
+        }
+        
         updateRotationUI() {
             if(this.selected) {
                 const deg = Math.round((this.selected.rotation.y * 180 / Math.PI + 360) % 360);
@@ -1167,7 +2469,18 @@
             }
         }
         
-        animate() { requestAnimationFrame(() => this.animate()); this.controls.update(); this.renderer.render(this.scene, this.camera); }
+        animate() { 
+            requestAnimationFrame(() => this.animate()); 
+            
+            // Calcular delta time para física
+            const deltaTime = Math.min(this.clock.getDelta(), 0.1); // Cap a 100ms
+            
+            // Actualizar física de vehículos
+            this.updateVehicles(deltaTime);
+            
+            this.controls.update(); 
+            this.renderer.render(this.scene, this.camera); 
+        }
 
         exportDXF() {
             // === HEADER SECTION ===
@@ -1180,8 +2493,8 @@
             s += "0\nSECTION\n2\nTABLES\n";
             s += "0\nTABLE\n2\nLAYER\n70\n10\n";
             const layers = ['Road', 'RoadCenter', 'Roundabout', 'RoundaboutCenter', 'RoadCurve', 'RoadCurveCenter', 
-                           'COLUMNAS', 'BORDES', 'TECHOS', 'PISOS', 'Octagon', 'Pyramid', 'BaseArea'];
-            const colors = [7, 1, 3, 1, 4, 1, 2, 5, 6, 30, 140, 200, 8];
+                           'COLUMNAS', 'BORDES', 'TECHOS', 'PISOS', 'Octagon', 'Pyramid', 'BaseArea', 'Cybertruck'];
+            const colors = [7, 1, 3, 1, 4, 1, 2, 5, 6, 30, 140, 200, 8, 150];
             layers.forEach((name, i) => {
                 s += `0\nLAYER\n2\n${name}\n70\n0\n62\n${colors[i]}\n6\nCONTINUOUS\n`;
             });
@@ -1272,6 +2585,15 @@
                         }
                     });
                     
+                } else if(o.userData.type === 'parametricRoundabout') {
+                    // Glorieta Paramétrica: igual que roundabout pero usa diametro
+                    const diametro = o.userData.diametro;
+                    const R = diametro / 2;
+                    const w = o.userData.ancho / 2;
+                    s += `0\nCIRCLE\n8\nRoundabout\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(R - w).toFixed(4)}\n`;
+                    s += `0\nCIRCLE\n8\nRoundabout\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(R + w).toFixed(4)}\n`;
+                    s += `0\nCIRCLE\n8\nRoundaboutCenter\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${R.toFixed(4)}\n`;
+                    
                 } else if(o.userData.type === 'curve') {
                     const R = o.userData.radius;
                     const w = o.userData.width / 2;
@@ -1295,6 +2617,50 @@
                         const c1 = corners[i], c2 = corners[(i + 1) % 4];
                         s += `0\nLINE\n8\nBaseArea\n10\n${c1.x.toFixed(4)}\n20\n${c1.z.toFixed(4)}\n30\n0.0\n11\n${c2.x.toFixed(4)}\n21\n${c2.z.toFixed(4)}\n31\n0.0\n`;
                     }
+                } else if(o.userData.type === 'cybertruck') {
+                    // Exportar Cybertruck como rectángulo con orientación
+                    const L = o.userData.length;
+                    const W = o.userData.width;
+                    const hL = L / 2;
+                    const hW = W / 2;
+                    
+                    // Calcular esquinas rotadas
+                    const cos = Math.cos(r);
+                    const sin = Math.sin(r);
+                    const corners = [
+                        { x: p.x + (-hL * cos - (-hW) * sin), z: p.z + (-hL * sin + (-hW) * cos) },
+                        { x: p.x + (hL * cos - (-hW) * sin), z: p.z + (hL * sin + (-hW) * cos) },
+                        { x: p.x + (hL * cos - hW * sin), z: p.z + (hL * sin + hW * cos) },
+                        { x: p.x + (-hL * cos - hW * sin), z: p.z + (-hL * sin + hW * cos) }
+                    ];
+                    
+                    // Dibujar contorno
+                    for(let i = 0; i < 4; i++) {
+                        const c1 = corners[i], c2 = corners[(i + 1) % 4];
+                        s += `0\nLINE\n8\nCybertruck\n10\n${c1.x.toFixed(4)}\n20\n${c1.z.toFixed(4)}\n30\n0.0\n11\n${c2.x.toFixed(4)}\n21\n${c2.z.toFixed(4)}\n31\n0.0\n`;
+                    }
+                    
+                    // Dibujar línea central (dirección)
+                    const frontX = p.x - hL * sin;
+                    const frontZ = p.z - hL * cos;
+                    const backX = p.x + hL * sin;
+                    const backZ = p.z + hL * cos;
+                    s += `0\nLINE\n8\nCybertruck\n10\n${frontX.toFixed(4)}\n20\n${frontZ.toFixed(4)}\n30\n0.0\n11\n${backX.toFixed(4)}\n21\n${backZ.toFixed(4)}\n31\n0.0\n`;
+                    
+                    // Dibujar ruedas como círculos pequeños
+                    const wheelRadius = 0.45;
+                    const wb = o.userData.wheelbase;
+                    const wheelPositions = [
+                        { x: -wb/2 + 0.3, z: hW - 0.45 },
+                        { x: -wb/2 + 0.3, z: -hW + 0.45 },
+                        { x: wb/2 - 0.3, z: hW - 0.45 },
+                        { x: wb/2 - 0.3, z: -hW + 0.45 }
+                    ];
+                    wheelPositions.forEach(wp => {
+                        const wx = p.x + (wp.x * cos - wp.z * sin);
+                        const wz = p.z + (wp.x * sin + wp.z * cos);
+                        s += `0\nCIRCLE\n8\nCybertruck\n10\n${wx.toFixed(4)}\n20\n${wz.toFixed(4)}\n30\n0.0\n40\n${wheelRadius.toFixed(4)}\n`;
+                    });
                 }
             });
             
@@ -1302,7 +2668,7 @@
             const b = new Blob([s], {type: 'application/dxf'});
             const l = document.createElement('a'); 
             l.href = URL.createObjectURL(b); 
-            l.download = 'piramides_1_200.dxf'; 
+            l.download = 'piramides_1_300.dxf'; 
             l.click();
         }
     }
