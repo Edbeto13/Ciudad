@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Pirámides Octagonales - Escala 1:300</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="ciudad.css">
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.168.0/examples/jsm/"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div class="panel toolbar">
+        <h2 class="text-xs font-bold text-blue-400 uppercase mb-4 border-b border-gray-700 pb-2 tracking-wider">Pirámides 1:300</h2>
+        
+        <button onclick="editor.showBaseArea()" class="btn-alt">
+            <span>▭</span> Mostrar Base 210×150m
+        </button>
+        <button onclick="editor.addPyramid()" class="btn-special">
+            <span>△</span> Añadir Pirámide (6→2)
+        </button>
+        <button onclick="editor.generatePyramidGrid()">
+            <span>▦</span> Generar Grid 2×12 Pirámides
+        </button>
+
+        <div class="h-px bg-gray-700 my-4"></div>
+        
+        <button onclick="editor.addOctagon()">
+            <span>⬡</span> Módulo Octagonal 50m²
+        </button>
+        <button onclick="editor.generatePerimeterRoad()" class="btn-alt">
+            <span>□</span> Carretera Perimetral
+        </button>
+        <button onclick="editor.addStraight()"><span>┃</span> Añadir Recta</button>
+        <button onclick="editor.addCurve()"><span>C</span> Añadir Codo 90°</button>
+        <button onclick="editor.addParametricRoundabout()" class="btn-special">
+            <span>◎</span> Glorieta Paramétrica
+        </button>
+        <button onclick="editor.addRadialHub()" class="btn-alt">
+            <span>☀</span> Distribuidor Radial (8 brazos)
+        </button>
+        <button onclick="editor.addPylon()" class="btn-special">
+            <span>🚡</span> Añadir Pilar Teleférico
+        </button>
+        
+        <div class="h-px bg-gray-700 my-4"></div>
+        <div style="font-size:9px; color:#10b981; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">🚗 Vehículos</div>
+        <button onclick="editor.addCybertruck()" class="btn-special" style="background:#1a1a2e; border-color:#0f4c75;">
+            <span>🚐</span> Tesla Cybertruck
+        </button>
+        <div style="font-size:8px; color:#666; margin-top:-4px; margin-bottom:8px; padding-left:4px;">
+            WASD/Flechas: mover | Q/E: girar | Shift: turbo
+        </div>
+        
+        <button onclick="editor.exportDXF()">⬇ Exportar DXF</button>
+        
+        <div class="h-px bg-gray-700 my-4"></div>
+        <div style="font-size:9px; color:#f59e0b; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">💾 Proyecto</div>
+        <button onclick="editor.saveScene()" class="btn-alt" style="background:#065f46; border-color:#059669;">
+            <span>💾</span> Guardar Escena
+        </button>
+        <button onclick="editor.loadSavedScene()" style="background:#1e3a5f; border-color:#3b82f6;">
+            <span>📂</span> Cargar Escena
+        </button>
+        <button onclick="editor.clearScene()" class="btn-danger" style="margin-top:4px;">
+            <span>🗑</span> Limpiar Todo
+        </button>
+
+        <div class="stats-box">
+            <strong>Escala 1:300</strong> | Base: 70×50cm<br>
+            • <strong>Carretera:</strong> 4 rectas + 4 codos (R=37.5m) + glorieta central<br>
+            • <strong>Octágono:</strong> 50m², V-V: 2.8cm, C-C: 2.59cm<br>
+            • <strong>Pirámide:</strong> 6→2 oct, 16.8×2.59cm<br>
+            • <strong>Cybertruck:</strong> 5.68×2.03m (19×6.8mm)<br>
+            • <strong>Radial:</strong> Glorieta R=50m + 8 brazos de 100m
+        </div>
+    </div>
+
+    <div class="panel properties" id="propPanel">
+        <h2 class="text-xs font-bold text-green-400 uppercase mb-4 border-b border-gray-700 pb-2 tracking-wider">Editar Pieza</h2>
+        
+        <div id="controls-straight" class="control-group">
+            <label>Longitud <span id="lblLen" class="val">100m</span></label>
+            <input type="range" id="rngLen" min="10" max="2000" step="10">
+        </div>
+
+        <div id="controls-curve" class="control-group" style="display:none;">
+            <label>Radio Eje <span id="lblRad" class="val">50m</span></label>
+            <input type="range" id="rngRad" min="10" max="1000" step="5">
+        </div>
+
+        <div id="controls-roundabout" class="control-group" style="display:none;">
+            <label>Diámetro <span id="lblDiam" class="val">50m</span></label>
+            <input type="range" id="rngDiam" min="10" max="200" step="1">
+            <div id="lblArea" style="font-size:11px; color:#22c55e; margin-top:6px; font-weight:bold;">Área: -- m²</div>
+            <div style="font-size:9px; color:#666; margin-top:4px;">Ancho fijo: 10m | Rango: 10-200m</div>
+        </div>
+
+        <div id="controls-pylon" class="control-group" style="display:none;">
+            <label>Altura <span id="lblHeight" class="val">30m</span></label>
+            <input type="range" id="rngHeight" min="15" max="45" step="1">
+            <label>Diámetro base <span id="lblBaseDiam" class="val">2m</span></label>
+            <input type="range" id="rngBaseDiam" min="1.5" max="3" step="0.1">
+            <div style="font-size:9px; color:#666; margin-top:4px;">Torre cónica | Cabezal 10 rodillos</div>
+        </div>
+
+        <div class="control-group">
+            <label>Rotación <span id="lblRot" class="val">0°</span></label>
+            <input type="range" id="rngRot" min="0" max="360" step="5">
+        </div>
+
+        <button onclick="editor.deleteSelected()" class="btn-danger">Eliminar</button>
+    </div>
+
+    <div id="snapMsg" class="snap-badge">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        SNAP CONECTADO
+    </div>
+
+    <script type="module" src="js/ciudad.main.js"></script>
+</body>
+</html>
