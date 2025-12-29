@@ -474,6 +474,95 @@
             this.controls.target.set(8.39, 0, -0.40);
         }
         
+        // === PILAR DE TELEFÉRICO ===
+        addPylon() {
+            const pylon = this.createPylonObj(30, 2); // altura 30m, diámetro base 2m
+            pylon.position.set(0, 0, 0);
+            this.scene.add(pylon);
+            this.objects.push(pylon);
+            this.select(pylon);
+        }
+        
+        createPylonObj(height = 30, baseDiameter = 2) {
+            const g = new THREE.Group();
+            g.userData = { 
+                type: 'pylon', 
+                height: height, 
+                baseDiameter: baseDiameter 
+            };
+            this.buildPylon(g);
+            return g;
+        }
+        
+        buildPylon(g) {
+            // Limpiar hijos anteriores
+            g.children.forEach(c => { if(c.geometry) c.geometry.dispose(); });
+            g.remove(...g.children);
+
+            const { height, baseDiameter } = g.userData;
+            const topDiameter = baseDiameter * 0.7;
+            const headWidth = baseDiameter * 3; // 6-9m aprox.
+
+            // 1. Torre tubular cónica
+            const towerGeo = new THREE.CylinderGeometry(topDiameter/2, baseDiameter/2, height, 16, 1, true);
+            const towerMat = this.selected === g ? this.matSel : this.matPylonTower;
+            const tower = new THREE.Mesh(towerGeo, towerMat);
+            tower.position.y = height/2;
+            tower.castShadow = true; 
+            tower.receiveShadow = true;
+            tower.name = 'tower';
+            g.add(tower);
+
+            // 2. Cabezal (headframe) - caja superior con balancines
+            const headGeo = new THREE.BoxGeometry(headWidth, 2, headWidth * 0.6);
+            const head = new THREE.Mesh(headGeo, this.matPylonHead);
+            head.position.y = height + 1;
+            head.castShadow = true;
+            head.name = 'head';
+            g.add(head);
+
+            // 3. Balancines (sheaves) - 10 rodillos simulados
+            const sheaveRadius = 0.4;
+            const sheaveGeo = new THREE.CylinderGeometry(sheaveRadius, sheaveRadius, headWidth * 0.8, 16);
+            for(let i = 0; i < 10; i++) {
+                const sheave = new THREE.Mesh(sheaveGeo, this.matPylonSheave);
+                sheave.rotation.z = Math.PI/2;
+                sheave.position.set(
+                    (i - 4.5) * (headWidth * 0.8 / 9),
+                    height + 1,
+                    0
+                );
+                sheave.castShadow = true;
+                sheave.name = 'sheave' + i;
+                g.add(sheave);
+            }
+
+            // 4. Pasarelas de mantenimiento
+            const platformGeo = new THREE.BoxGeometry(headWidth + 1, 0.2, headWidth * 0.7);
+            const platform = new THREE.Mesh(platformGeo, this.matPylonHead);
+            platform.position.y = height + 2.1;
+            platform.castShadow = true;
+            platform.receiveShadow = true;
+            platform.name = 'platform';
+            g.add(platform);
+
+            // 5. Cimentación (zapata)
+            const baseGeo = new THREE.BoxGeometry(baseDiameter * 4, 1, baseDiameter * 4);
+            const baseMesh = new THREE.Mesh(baseGeo, this.matPylonBase);
+            baseMesh.position.y = -0.5;
+            baseMesh.receiveShadow = true;
+            baseMesh.name = 'base';
+            g.add(baseMesh);
+
+            // 6. Highlight para selección
+            const hlGeo = new THREE.CylinderGeometry(topDiameter/2 + 0.2, baseDiameter/2 + 0.2, height, 16);
+            const hl = new THREE.Mesh(hlGeo, this.matOctHighlight);
+            hl.position.y = height/2;
+            hl.visible = false;
+            hl.name = 'highlight';
+            g.add(hl);
+        }
+        
         // === GUARDAR / CARGAR ESCENA ===
         saveScene() {
             const sceneData = this.serializeScene();
