@@ -93,6 +93,9 @@
         <button onclick="editor.addRadialHub()" class="btn-alt">
             <span>☀</span> Distribuidor Radial (8 brazos)
         </button>
+        <button onclick="editor.addPylon()" class="btn-special">
+            <span>🚡</span> Añadir Pilar Teleférico
+        </button>
         
         <div class="h-px bg-gray-700 my-4"></div>
         <div style="font-size:9px; color:#10b981; margin-bottom:6px; text-transform:uppercase; letter-spacing:1px;">🚗 Vehículos</div>
@@ -148,6 +151,15 @@
             <input type="range" id="rngDiam" min="10" max="200" step="1">
             <div id="lblArea" style="font-size:11px; color:#22c55e; margin-top:6px; font-weight:bold;">Área: -- m²</div>
             <div style="font-size:9px; color:#666; margin-top:4px;">Ancho fijo: 10m | Rango: 10-200m</div>
+        </div>
+
+        <!-- Control Pilar Teleférico -->
+        <div id="controls-pylon" class="control-group" style="display:none;">
+            <label>Altura <span id="lblHeight" class="val">30m</span></label>
+            <input type="range" id="rngHeight" min="15" max="45" step="1">
+            <label>Diámetro base <span id="lblBaseDiam" class="val">2m</span></label>
+            <input type="range" id="rngBaseDiam" min="1.5" max="3" step="0.1">
+            <div style="font-size:9px; color:#666; margin-top:4px;">Torre cónica | Cabezal 10 rodillos</div>
         </div>
 
         <!-- Rotación Común -->
@@ -269,6 +281,27 @@
                 color: 0xff3333
             });
             
+            // Materiales para Pilar de Teleférico
+            this.matPylonTower = new THREE.MeshStandardMaterial({
+                color: 0xc0c0c0,
+                metalness: 0.9,
+                roughness: 0.2
+            });
+            this.matPylonHead = new THREE.MeshStandardMaterial({
+                color: 0x444444,
+                metalness: 0.8,
+                roughness: 0.4
+            });
+            this.matPylonSheave = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                metalness: 0.7,
+                roughness: 0.5
+            });
+            this.matPylonBase = new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                roughness: 0.9
+            });
+            
             // Estado de vehículos activos
             this.vehicles = [];
             this.activeVehicle = null; // Vehículo actualmente controlado
@@ -310,6 +343,8 @@
             document.getElementById('rngRad').addEventListener('input', (e) => this.setRadius(e.target.value));
             document.getElementById('rngRot').addEventListener('input', (e) => this.setRotation(e.target.value));
             document.getElementById('rngDiam').addEventListener('input', (e) => this.setDiameter(e.target.value));
+            document.getElementById('rngHeight').addEventListener('input', (e) => this.setHeight(e.target.value));
+            document.getElementById('rngBaseDiam').addEventListener('input', (e) => this.setBaseDiameter(e.target.value));
 
             // Controles de teclado
             window.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -540,6 +575,10 @@
                         case 'cybertruck':
                             data.velocity = o.userData.velocity || 0;
                             break;
+                        case 'pylon':
+                            data.height = o.userData.height;
+                            data.baseDiameter = o.userData.baseDiameter;
+                            break;
                     }
                     return data;
                 })
@@ -588,6 +627,9 @@
                         break;
                     case 'cybertruck':
                         newObj = this.createCybertruckObj();
+                        break;
+                    case 'pylon':
+                        newObj = this.createPylonObj(obj.height, obj.baseDiameter);
                         break;
                 }
                 
@@ -1665,6 +1707,20 @@
             
             this.buildParametricRoundabout(this.selected);
         }
+        
+        setHeight(h) {
+            if(!this.selected || this.selected.userData.type !== 'pylon') return;
+            this.selected.userData.height = parseFloat(h);
+            this.buildPylon(this.selected);
+            document.getElementById('lblHeight').innerText = Math.round(h)+'m';
+        }
+        
+        setBaseDiameter(d) {
+            if(!this.selected || this.selected.userData.type !== 'pylon') return;
+            this.selected.userData.baseDiameter = parseFloat(d);
+            this.buildPylon(this.selected);
+            document.getElementById('lblBaseDiam').innerText = parseFloat(d).toFixed(1)+'m';
+        }
 
         createRoundaboutObj(radius, width) {
             const g = new THREE.Group();
@@ -2044,13 +2100,36 @@
                     document.getElementById('lblArea').innerHTML = `Área: <strong>${area.toFixed(0)} m²</strong> | Maqueta: ⌀${diametroMaqueta}cm`;
                 } else if(obj.userData.type === 'cybertruck') {
                     // Cybertruck: mostrar info del vehículo
+                    cStraight.style.display = 'none';
+                    cCurve.style.display = 'none';
+                    document.getElementById('controls-roundabout').style.display = 'none';
+                    document.getElementById('controls-pylon').style.display = 'none';
+                    
                     // Activar este vehículo para control
                     this.activeVehicle = obj;
+                } else if(obj.userData.type === 'pylon') {
+                    // Pilar de teleférico: mostrar controles de altura y diámetro
+                    cStraight.style.display = 'none';
+                    cCurve.style.display = 'none';
+                    document.getElementById('controls-roundabout').style.display = 'none';
+                    document.getElementById('controls-pylon').style.display = 'block';
+                    
+                    document.getElementById('rngHeight').value = obj.userData.height;
+                    document.getElementById('lblHeight').innerText = Math.round(obj.userData.height)+'m';
+                    document.getElementById('rngBaseDiam').value = obj.userData.baseDiameter;
+                    document.getElementById('lblBaseDiam').innerText = obj.userData.baseDiameter.toFixed(1)+'m';
                 } else {
+                    cStraight.style.display = 'none';
                     cCurve.style.display = 'block';
+                    document.getElementById('controls-roundabout').style.display = 'none';
+                    document.getElementById('controls-pylon').style.display = 'none';
                     document.getElementById('rngRad').value = obj.userData.radius;
                     document.getElementById('lblRad').innerText = Math.round(obj.userData.radius)+'m';
                 }
+            } else { 
+                panel.style.display = 'none'; 
+                document.getElementById('controls-roundabout').style.display = 'none'; 
+                document.getElementById('controls-pylon').style.display = 'none';
             }
         }
 
@@ -2096,6 +2175,12 @@
                         if(hl) hl.visible = (mat === this.matSel);
                     }
                 });
+            } else if(obj.userData.type === 'pylon') {
+                // Pilar: actualizar material de la torre y mostrar/ocultar highlight
+                const tower = obj.getObjectByName('tower');
+                if(tower) tower.material = (mat === this.matSel) ? this.matSel : this.matPylonTower;
+                const hl = obj.getObjectByName('highlight');
+                if(hl) hl.visible = (mat === this.matSel);
             } else {
                 if(obj.children[0]) obj.children[0].material = mat;
             }
@@ -2502,8 +2587,8 @@
             s += "0\nSECTION\n2\nTABLES\n";
             s += "0\nTABLE\n2\nLAYER\n70\n10\n";
             const layers = ['Road', 'RoadCenter', 'Roundabout', 'RoundaboutCenter', 'RoadCurve', 'RoadCurveCenter', 
-                           'COLUMNAS', 'BORDES', 'TECHOS', 'PISOS', 'Octagon', 'Pyramid', 'BaseArea', 'Cybertruck'];
-            const colors = [7, 1, 3, 1, 4, 1, 2, 5, 6, 30, 140, 200, 8, 150];
+                           'COLUMNAS', 'BORDES', 'TECHOS', 'PISOS', 'Octagon', 'Pyramid', 'BaseArea', 'Cybertruck', 'Pylon'];
+            const colors = [7, 1, 3, 1, 4, 1, 2, 5, 6, 30, 140, 200, 8, 150, 120];
             layers.forEach((name, i) => {
                 s += `0\nLAYER\n2\n${name}\n70\n0\n62\n${colors[i]}\n6\nCONTINUOUS\n`;
             });
@@ -2670,6 +2755,32 @@
                         const wz = p.z + (wp.x * sin + wp.z * cos);
                         s += `0\nCIRCLE\n8\nCybertruck\n10\n${wx.toFixed(4)}\n20\n${wz.toFixed(4)}\n30\n0.0\n40\n${wheelRadius.toFixed(4)}\n`;
                     });
+                } else if(o.userData.type === 'pylon') {
+                    // Exportar pilar de teleférico: torre como cilindro, cabezal como caja, zapata como base
+                    const height = o.userData.height;
+                    const baseDiam = o.userData.baseDiameter;
+                    const topDiam = baseDiam * 0.7;
+                    const baseSize = baseDiam * 4;
+                    
+                    // Torre: círculo base y superior
+                    s += `0\nCIRCLE\n8\nPylon\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n40\n${(baseDiam/2).toFixed(4)}\n`;
+                    s += `0\nCIRCLE\n8\nPylon\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n${height.toFixed(4)}\n40\n${(topDiam/2).toFixed(4)}\n`;
+                    
+                    // Línea vertical central
+                    s += `0\nLINE\n8\nPylon\n10\n${p.x.toFixed(4)}\n20\n${p.z.toFixed(4)}\n30\n0.0\n11\n${p.x.toFixed(4)}\n21\n${p.z.toFixed(4)}\n31\n${height.toFixed(4)}\n`;
+                    
+                    // Zapata (base cuadrada)
+                    const hBase = baseSize / 2;
+                    const baseCorners = [
+                        {x: p.x - hBase, z: p.z - hBase},
+                        {x: p.x + hBase, z: p.z - hBase},
+                        {x: p.x + hBase, z: p.z + hBase},
+                        {x: p.x - hBase, z: p.z + hBase}
+                    ];
+                    for(let i = 0; i < 4; i++) {
+                        const c1 = baseCorners[i], c2 = baseCorners[(i + 1) % 4];
+                        s += `0\nLINE\n8\nPylon\n10\n${c1.x.toFixed(4)}\n20\n${c1.z.toFixed(4)}\n30\n-0.5\n11\n${c2.x.toFixed(4)}\n21\n${c2.z.toFixed(4)}\n31\n-0.5\n`;
+                    }
                 }
             });
             
