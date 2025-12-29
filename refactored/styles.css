@@ -1,0 +1,157 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background: #151515;
+    font-family: 'Segoe UI', sans-serif;
+    user-select: none;
+}
+
+canvas {
+    display: block;
+    outline: none;
+}
+
+.panel {
+    position: absolute;
+    background: rgba(25, 25, 25, 0.95);
+    backdrop-filter: blur(12px);
+    border: 1px solid #444;
+    color: #eee;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    pointer-events: auto;
+}
+
+.toolbar {
+    top: 20px;
+    left: 20px;
+    width: 280px;
+}
+
+.properties {
+    top: 20px;
+    right: 20px;
+    width: 280px;
+    display: none;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    color: #ccc;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+button:hover {
+    background: #3a3a3a;
+    border-color: #60a5fa;
+    color: white;
+}
+
+button.btn-special {
+    background: #4f46e5;
+    border-color: #4338ca;
+    color: white;
+}
+
+button.btn-special:hover {
+    background: #4338ca;
+    box-shadow: 0 0 15px rgba(79, 70, 229, 0.4);
+}
+
+button.btn-alt {
+    background: #0891b2;
+    border-color: #0e7490;
+    color: white;
+}
+
+button.btn-alt:hover {
+    background: #0e7490;
+    box-shadow: 0 0 15px rgba(8, 145, 178, 0.4);
+}
+
+button.btn-danger {
+    background: #450a0a;
+    border-color: #7f1d1d;
+    color: #fca5a5;
+    margin-top: 16px;
+}
+
+button.btn-danger:hover {
+    background: #7f1d1d;
+    color: white;
+}
+
+.control-group {
+    margin-bottom: 12px;
+    background: #222;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #333;
+}
+
+input[type=range] {
+    width: 100%;
+    accent-color: #3b82f6;
+    margin: 10px 0 4px 0;
+    cursor: pointer;
+}
+
+label {
+    font-size: 10px;
+    text-transform: uppercase;
+    color: #888;
+    display: flex;
+    justify-content: space-between;
+    letter-spacing: 1px;
+}
+
+.val {
+    color: #60a5fa;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.snap-badge {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #059669;
+    color: white;
+    padding: 8px 20px;
+    border-radius: 30px;
+    font-weight: bold;
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #34d399;
+}
+
+.stats-box {
+    margin-top: 15px;
+    border-top: 1px solid #333;
+    padding-top: 12px;
+    font-size: 10px;
+    color: #666;
+    line-height: 1.5;
+}
