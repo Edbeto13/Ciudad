@@ -1105,6 +1105,15 @@
             // Eliminar base anterior si existe
             const oldBase = this.scene.getObjectByName('baseArea');
             if(oldBase) this.scene.remove(oldBase);
+            // Eliminar etiquetas de dimensión previas
+            ['dimLabelX', 'dimLabelZ'].forEach(name => {
+                const lbl = this.scene.getObjectByName(name);
+                if(lbl) {
+                    if(lbl.material.map) lbl.material.map.dispose();
+                    lbl.material.dispose();
+                    this.scene.remove(lbl);
+                }
+            });
 
             const baseGeo = new THREE.PlaneGeometry(this.BASE_REAL_X, this.BASE_REAL_Z);
             const baseMat = new THREE.MeshBasicMaterial({ 
@@ -1128,11 +1137,11 @@
             base.add(border);
 
             // Etiquetas de dimensión (escala 1:300)
-            this.addDimensionLabel(0, 0.5, -this.BASE_REAL_Z/2 - 3, '210m (70cm)');
-            this.addDimensionLabel(-this.BASE_REAL_X/2 - 5, 0.5, 0, '150m (50cm)');
+            this.addDimensionLabel(0, 0.5, -this.BASE_REAL_Z/2 - 3, '210m (70cm)', 'dimLabelX');
+            this.addDimensionLabel(-this.BASE_REAL_X/2 - 5, 0.5, 0, '150m (50cm)', 'dimLabelZ');
         }
 
-        addDimensionLabel(x, y, z, text) {
+        addDimensionLabel(x, y, z, text, name) {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 64;
             const ctx = canvas.getContext('2d');
@@ -1144,7 +1153,7 @@
             const sprite = new THREE.Sprite(spriteMat);
             sprite.position.set(x, y, z);
             sprite.scale.set(20, 5, 1);
-            sprite.name = 'baseArea';
+            sprite.name = name;
             this.scene.add(sprite);
         }
 
@@ -1991,6 +2000,13 @@
             const panel = document.getElementById('propPanel');
             const cStraight = document.getElementById('controls-straight');
             const cCurve = document.getElementById('controls-curve');
+            const roundControls = document.getElementById('controls-roundabout');
+
+            // Estado inicial: ocultar todos los controles
+            panel.style.display = 'none';
+            cStraight.style.display = 'none';
+            cCurve.style.display = 'none';
+            roundControls.style.display = 'none';
 
             if(obj) {
                 this.updateMat(obj, this.matSel);
@@ -1999,26 +2015,24 @@
                 document.getElementById('lblRot').innerText = Math.round(obj.rotation.y * 180/Math.PI) + '°';
 
                 if(obj.userData.type === 'straight') {
-                    cStraight.style.display = 'block'; cCurve.style.display = 'none';
+                    cStraight.style.display = 'block';
                     document.getElementById('rngLen').value = obj.userData.length;
                     document.getElementById('lblLen').innerText = Math.round(obj.userData.length)+'m';
                     // Crear handles para resize
                     this.createResizeHandles(obj);
                 } else if(obj.userData.type === 'octagon') {
                     // Octágono: mostrar área en lugar de longitud
-                    cStraight.style.display = 'block'; cCurve.style.display = 'none';
+                    cStraight.style.display = 'block';
                     document.getElementById('rngLen').value = obj.userData.area;
                     document.getElementById('lblLen').innerText = Math.round(obj.userData.area)+'m²';
                 } else if(obj.userData.type === 'pyramid') {
                     // Pirámide: mostrar niveles
-                    cStraight.style.display = 'block'; cCurve.style.display = 'none';
+                    cStraight.style.display = 'block';
                     const totalOcts = obj.userData.levels.reduce((a,b) => a+b, 0);
                     document.getElementById('lblLen').innerText = totalOcts + ' octágonos';
                 } else if(obj.userData.type === 'parametricRoundabout') {
                     // Glorieta Paramétrica: mostrar control de diámetro y área
-                    cStraight.style.display = 'none'; 
-                    cCurve.style.display = 'none';
-                    document.getElementById('controls-roundabout').style.display = 'block';
+                    roundControls.style.display = 'block';
                     
                     const diametro = obj.userData.diametro;
                     const radio = diametro / 2;
@@ -2030,19 +2044,14 @@
                     document.getElementById('lblArea').innerHTML = `Área: <strong>${area.toFixed(0)} m²</strong> | Maqueta: ⌀${diametroMaqueta}cm`;
                 } else if(obj.userData.type === 'cybertruck') {
                     // Cybertruck: mostrar info del vehículo
-                    cStraight.style.display = 'none';
-                    cCurve.style.display = 'none';
-                    document.getElementById('controls-roundabout').style.display = 'none';
-                    
                     // Activar este vehículo para control
                     this.activeVehicle = obj;
                 } else {
-                    cStraight.style.display = 'none'; cCurve.style.display = 'block';
-                    document.getElementById('controls-roundabout').style.display = 'none';
+                    cCurve.style.display = 'block';
                     document.getElementById('rngRad').value = obj.userData.radius;
                     document.getElementById('lblRad').innerText = Math.round(obj.userData.radius)+'m';
                 }
-            } else { panel.style.display = 'none'; document.getElementById('controls-roundabout').style.display = 'none'; }
+            }
         }
 
         updateMat(obj, mat) {
